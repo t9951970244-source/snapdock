@@ -1,0 +1,36 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win portable --x64
+          - os: macos-latest
+            args: --mac --arm64 --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Add author field
+        run: node -e "const f='package.json',p=require('./'+f);p.author=p.author||'SnapDock';require('fs').writeFileSync(f,JSON.stringify(p,null,2))"
+      - name: Build app
+        run: npm run build
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SnapDock-${{ matrix.os }}
+          path: |
+            release/*.exe
+            release/*.dmg
