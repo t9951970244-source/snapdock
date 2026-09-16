@@ -57,6 +57,22 @@ export async function unseal<T>(key: CryptoKey, s: Sealed): Promise<T | null> {
 
 export const nonce = () => crypto.getRandomValues(new Uint8Array(16))
 
+/** Сырой канал передаёт текст, поэтому байты кодируем в base64. */
+export function toB64(b: ArrayBuffer): string {
+  const u = new Uint8Array(b)
+  let s = ''
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+export function fromB64(s: string): ArrayBuffer {
+  const bin = atob(s)
+  const u = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i)
+  return u.buffer
+}
+export const packSealed = (s: Sealed) => ({ iv: toB64(s.iv), ct: toB64(s.ct) })
+export const unpackSealed = (o: { iv: string; ct: string }): Sealed => ({ iv: fromB64(o.iv), ct: fromB64(o.ct) })
+
 /** Сравнение без ранних выходов — чтобы по времени ответа нельзя было подбирать. */
 export function sameBytes(a: ArrayBuffer, b: ArrayBuffer): boolean {
   const x = new Uint8Array(a), y = new Uint8Array(b)

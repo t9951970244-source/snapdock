@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { useEffect, useRef, useState } from 'react'
 import '../../src/index.css'
 import { usePeer, MAX_PEERS } from '../../src/hooks/usePeer'
+import { useDirect } from '../../src/hooks/useDirect'
 import { prefersDark } from '../../src/lib/color'
 import { bytes } from '../../src/lib/format'
 import { initLang, setLang, t, useLang } from '../../src/lib/i18n'
@@ -30,6 +31,9 @@ function Chat() {
   const [text, setText] = useState('')
   const [code, setCode] = useState('')
   const [pw, setPw] = useState('')
+  const d = useDirect()
+  const [mode, setMode] = useState<'room' | 'direct'>('room')
+  const [inBox, setInBox] = useState('')
   const [copied, setCopied] = useState<'' | 'code' | 'pass'>('')
   const flash = (what: 'code' | 'pass', value: string) => {
     window.snap?.copyText(value)
@@ -61,6 +65,24 @@ function Chat() {
       <div className="flex shrink-0 items-center gap-3 px-4 py-3"
            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
         <span className="text-[13px] font-semibold">{t('roomTitle')}</span>
+        {!p.room && d.phase === 'idle' && (
+          <span className="no-drag flex gap-0.5 rounded-[10px] p-0.5"
+                style={{ background: 'rgb(var(--fill))', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+            {(['room', 'direct'] as const).map((m) => (
+              <button key={m} onClick={() => setMode(m)}
+                      className="rounded-[8px] px-2.5 py-1 text-[11px] font-medium"
+                      style={{
+                        background: mode === m ? 'rgb(var(--accent) / 0.28)' : 'transparent',
+                        color: 'rgb(var(--ink))',
+                      }}>
+                {m === 'room' ? t('modeRoom') : t('modeDirect')}
+              </button>
+            ))}
+          </span>
+        )}
+        {d.phase === 'live' && (
+          <span className="text-[11.5px]" style={{ color: 'rgb(var(--ink-2))' }}>{t('directLive')}</span>
+        )}
         {p.room && (
           <button onClick={() => flash('code', p.room!)}
                   className="no-drag rounded-[9px] px-2 py-1 text-[11.5px] font-medium"
@@ -101,7 +123,112 @@ function Chat() {
         </button>
       </div>
 
-      {!p.room ? (
+      {mode === 'direct' && d.phase !== 'live' ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-8 py-4 text-center">
+          <p className="max-w-[460px] text-[12.5px] leading-relaxed" style={{ color: 'rgb(var(--ink-2))' }}>
+            {t('directIntro')}
+          </p>
+
+          <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t('password')}
+                 className="h-10 w-[320px] rounded-[12px] px-3 text-[12.5px] outline-none"
+                 style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+
+          {d.phase === 'idle' && (
+            <>
+              <button onClick={() => pw.trim() && d.createOffer(pw)} disabled={!pw.trim()}
+                      className="h-10 w-[320px] rounded-[12px] text-[13px] font-semibold disabled:opacity-40"
+                      style={{ background: 'rgb(var(--accent) / 0.22)' }}>
+                {t('makeInvite')}
+              </button>
+              <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
+                        placeholder={t('pasteInvite')} rows={3}
+                        className="w-[320px] resize-none rounded-[12px] p-3 text-[11px] outline-none"
+                        style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+              <button onClick={() => pw.trim() && inBox.trim() && d.acceptOffer(pw, inBox)}
+                      disabled={!pw.trim() || !inBox.trim()}
+                      className="h-10 w-[320px] rounded-[12px] text-[12.5px] font-medium disabled:opacity-40"
+                      style={{ background: 'rgb(var(--fill))' }}>
+                {t('accept')}
+              </button>
+            </>
+          )}
+
+          {(d.phase === 'madeOffer' || d.phase === 'madeAnswer') && (
+            <div className="flex w-[420px] flex-col gap-2">
+              <p className="text-[12px]" style={{ color: 'rgb(var(--ink))' }}>
+                {d.phase === 'madeOffer' ? t('inviteReady') : t('answerReady')}
+              </p>
+              <textarea readOnly value={d.code} rows={4} onFocus={(e) => e.currentTarget.select()}
+                        className="resize-none rounded-[12px] p-3 text-[10px] outline-none"
+                        style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink-2))' }} />
+              <button onClick={() => window.snap?.copyText(d.code)}
+                      className="h-9 rounded-[11px] text-[12px] font-medium"
+                      style={{ background: 'rgb(var(--accent) / 0.22)' }}>
+                {t('copyCode')}
+              </button>
+              {d.phase === 'madeOffer' && (
+                <>
+                  <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
+                            placeholder={t('pasteAnswer')} rows={3}
+                            className="mt-1 resize-none rounded-[12px] p-3 text-[11px] outline-none"
+                            style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+                  <button onClick={() => inBox.trim() && d.acceptAnswer(inBox)} disabled={!inBox.trim()}
+                          className="h-10 rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
+                          style={{ background: 'rgb(var(--accent) / 0.22)' }}>
+                    {t('connectNow')}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {d.error && <p className="max-w-[440px] text-[12px]" style={{ color: '#ff453a' }}>{d.error}</p>}
+        </div>
+      ) : mode === 'direct' ? (
+        <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4"
+             onDragOver={(e) => e.preventDefault()}
+             onDrop={(e) => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(d.sendFile) }}>
+          <div className="min-w-0 flex-[3] overflow-y-auto">
+            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
+              <Tile stream={d.localStream.current ?? undefined} name={t('you')} me />
+              <Tile stream={d.remote ?? undefined} name="—" />
+            </div>
+          </div>
+          <div className="flex min-w-[220px] flex-1 flex-col gap-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
+              {d.chat.length === 0 && (
+                <div className="py-4 text-center text-[11.5px]" style={{ color: 'rgb(var(--ink-2))' }}>
+                  {t('emptyChat')}
+                </div>
+              )}
+              {d.chat.map((c) => (
+                <div key={c.id}
+                     className={`max-w-[88%] rounded-[12px] px-2.5 py-1.5 text-[12px] ${c.mine ? 'self-end' : 'self-start'}`}
+                     style={{ background: c.mine ? 'rgb(var(--accent) / 0.22)' : 'rgb(var(--fill))' }}>
+                  {c.kind === 'text' ? c.text : (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="truncate font-medium">{c.name}</span>
+                        <span className="shrink-0 text-[10px]" style={{ color: 'rgb(var(--ink-2))' }}>{bytes(c.size)}</span>
+                      </div>
+                      {c.progress < 1
+                        ? <div className="h-1 w-full overflow-hidden rounded-pill" style={{ background: 'rgb(var(--fill))' }}>
+                            <div className="h-full rounded-pill" style={{ width: `${c.progress * 100}%`, background: 'rgb(var(--accent))' }} />
+                          </div>
+                        : c.url && <a href={c.url} download={c.name} className="text-[11px] underline">{t('saveFile')}</a>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <input value={text} onChange={(e) => setText(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === 'Enter' && text.trim()) { d.send(text); setText('') } }}
+                   placeholder={t('message')}
+                   className="h-9 shrink-0 rounded-[11px] px-3 text-[12.5px] outline-none"
+                   style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+          </div>
+        </div>
+      ) : !p.room ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
           <p className="max-w-[420px] text-[12.5px] leading-relaxed" style={{ color: 'rgb(var(--ink-2))' }}>
             {t('roomIntro')}
