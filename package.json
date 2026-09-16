@@ -1,0 +1,99 @@
+{
+  "name": "snapdock",
+  "version": "1.0.0",
+  "description": "SnapDock - стеклянный мини-виджет: снимки экрана, управление любым звуком, P2P",
+  "author": "SnapDock",
+  "main": "dist-electron/main.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "electron .",
+    "pack": "vite build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "framer-motion": "^11.3.0",
+    "peerjs": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.4",
+    "vite-plugin-electron": "^0.28.7",
+    "vite-plugin-electron-renderer": "^0.14.5"
+  },
+  "build": {
+    "appId": "com.snapdock.app",
+    "productName": "SnapDock",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/tray.png",
+        "to": "tray.png"
+      },
+      {
+        "from": "resources/",
+        "to": ".",
+        "filter": [
+          "*.exe"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "SnapDock.exe"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "extendInfo": {
+        "NSAudioCaptureUsageDescription": "SnapDock показывает эквалайзер по звуку, который играет на компьютере.",
+        "NSMicrophoneUsageDescription": "Микрофон нужен для голоса в P2P-комнате.",
+        "NSCameraUsageDescription": "Камера нужна для видео-кружка в P2P-комнате.",
+        "LSUIElement": true
+      },
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "identity": null
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "dmg": {
+      "artifactName": "SnapDock-${arch}.dmg"
+    }
+  }
+}

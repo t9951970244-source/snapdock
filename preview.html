@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SnapDock — превью виджета</title>
+<style>
+/* ============================================================
+   Токены. Те же, что в src/index.css боевого проекта.
+   ============================================================ */
+:root{
+  --glass: 255 255 255 / .72;
+  --glass-edge: 255 255 255 / .40;
+  --ink: 0 0 0 / .88;
+  --ink-2: 60 60 67 / .60;
+  --ink-3: 60 60 67 / .30;
+  --fill: 120 120 128 / .16;
+  --shadow: 0 8px 32px rgb(0 0 0 / .12);
+  --accent: 255 255 255;
+  --blur: 28px;
+  --ios: cubic-bezier(.32,.72,0,1);
+}
+html.dark{
+  --glass: 28 28 30 / .75;
+  --glass-edge: 255 255 255 / .12;
+  --ink: 255 255 255 / .92;
+  --ink-2: 235 235 245 / .60;
+  --ink-3: 235 235 245 / .28;
+  --fill: 120 120 128 / .32;
+  --shadow: 0 8px 32px rgb(0 0 0 / .45);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font:400 13px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:'tnum' 1;
+  user-select:none; overflow:hidden; color:rgb(var(--ink));
+}
+
+/* Обои — чтобы было видно, что стекло действительно размывает */
+.desk{position:fixed;inset:0;overflow:hidden;
+  background:
+    radial-gradient(90% 70% at 12% 8%, #ffd9a8 0%, transparent 55%),
+    radial-gradient(80% 70% at 88% 12%, #b8d4ff 0%, transparent 55%),
+    radial-gradient(90% 80% at 50% 100%, #ffc2d8 0%, transparent 60%),
+    linear-gradient(160deg,#f7f4ef,#e8eef6 60%,#f2e9f3);
+  transition:background .6s var(--ios)}
+html.dark .desk{
+  background:
+    radial-gradient(90% 70% at 12% 8%, #4a2f12 0%, transparent 55%),
+    radial-gradient(80% 70% at 88% 12%, #12304f 0%, transparent 55%),
+    radial-gradient(90% 80% at 50% 100%, #3d1430 0%, transparent 60%),
+    linear-gradient(160deg,#141417,#0f1520 60%,#1a1220)}
+.deskgrid{position:absolute;inset:0;opacity:.28;
+  background-image:linear-gradient(rgb(0 0 0/.05) 1px,transparent 1px),linear-gradient(90deg,rgb(0 0 0/.05) 1px,transparent 1px);
+  background-size:52px 52px}
+html.dark .deskgrid{background-image:linear-gradient(rgb(255 255 255/.05) 1px,transparent 1px),linear-gradient(90deg,rgb(255 255 255/.05) 1px,transparent 1px)}
+
+/* Стекло */
+.glass{position:relative;background:rgb(var(--glass));
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(180%);
+  backdrop-filter:blur(var(--blur)) saturate(180%);
+  border:1px solid rgb(var(--glass-edge));
+  box-shadow:var(--shadow)}
+.glass::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,rgb(255 255 255/.28),transparent 42%)}
+
+/* ============================================================
+   Виджет
+   ============================================================ */
+#dockwrap{position:fixed;right:24px;bottom:24px;z-index:40;--peekx:370px;
+  transition:transform .55s var(--ios)}
+#dockwrap.peek{transform:translateX(var(--peekx))}
+#dock{width:380px;border-radius:24px;overflow:hidden;
+  transition:box-shadow .3s var(--ios)}
+#dock.lift{box-shadow:0 18px 50px rgb(0 0 0 / .22)}
+.ambient{position:absolute;inset:-40% -20% auto -20%;height:180%;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(60% 80% at 18% 0%, rgb(var(--accent)/.38), transparent 70%);
+  filter:blur(18px);transition:background .7s var(--ios)}
+
+.grip{position:absolute;left:0;top:0;width:14px;height:100%;z-index:20;display:grid;place-items:center;cursor:grab}
+.grip:active{cursor:grabbing}
+.grip i{display:block;width:4px;height:36px;border-radius:2px;background:rgb(var(--ink-3))}
+
+.body{position:relative;z-index:10;padding:8px 10px 8px 18px}
+
+/* Now playing */
+.np{position:relative}
+#eq{position:absolute;left:0;right:0;bottom:0;height:38px;width:100%;pointer-events:none}
+.nprow{position:relative;display:flex;align-items:center;gap:10px}
+.cover{position:relative;width:48px;height:48px;flex:0 0 auto;border-radius:11px;overflow:hidden;
+  background:rgb(var(--fill));box-shadow:0 2px 10px rgb(0 0 0/.16)}
+.cover canvas{width:100%;height:100%;display:block}
+.cover .ring{position:absolute;inset:0;border-radius:11px;box-shadow:inset 0 0 0 1.5px rgb(var(--accent)/.55);animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.35}50%{opacity:.9}}
+.meta{min-width:0;flex:1}
+.title{font-size:13px;font-weight:600;letter-spacing:-.01em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artist{font-size:11px;line-height:1.2;color:rgb(var(--ink-2));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fadein{animation:fadein .34s var(--ios)}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.transport{display:flex;align-items:center;gap:2px;flex:0 0 auto}
+.ib{display:grid;place-items:center;width:28px;height:28px;border-radius:999px;border:0;background:none;color:rgb(var(--ink));
+  cursor:default;transition:transform .18s var(--ios),background .18s}
+.ib:hover{transform:scale(1.08)}
+.ib:active{transform:scale(.88)}
+.ib.big{width:32px;height:32px}
+.ib.on{background:rgb(var(--accent)/.16);color:rgb(var(--accent))}
+
+.prog{display:flex;align-items:center;gap:8px;margin-top:6px}
+.track{position:relative;flex:1;height:12px;cursor:pointer}
+.track .rail{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:3px;border-radius:999px;background:rgb(var(--fill));overflow:hidden;transition:height .2s var(--ios)}
+.track:hover .rail{height:5px}
+.track .fill{height:100%;border-radius:999px;background:rgb(var(--accent))}
+.track .knob{position:absolute;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgb(0 0 0/.3);opacity:0;transition:opacity .18s}
+.track:hover .knob{opacity:1}
+.time{flex:0 0 auto;font-size:10px;color:rgb(var(--ink-2))}
+
+/* Лента снимков */
+.tray{display:flex;align-items:center;gap:6px;margin-top:8px;overflow:hidden;
+  max-height:0;opacity:0;transition:max-height .4s var(--ios),opacity .3s,margin .4s var(--ios)}
+.tray.show{max-height:40px;opacity:1}
+.shot{position:relative;width:52px;height:34px;flex:0 0 auto;border-radius:8px;overflow:hidden;cursor:grab;
+  box-shadow:0 1px 4px rgb(0 0 0/.18);transition:box-shadow .2s,transform .2s var(--ios)}
+.shot:hover{transform:translateY(-1px)}
+.shot.sel{box-shadow:0 0 0 1.5px rgb(var(--accent)),0 2px 8px rgb(0 0 0/.2)}
+.shot canvas{width:100%;height:100%;display:block}
+.trayhint{font-size:9.5px;line-height:1.1;color:rgb(var(--ink-3))}
+
+/* Кнопки действий */
+.acts{display:flex;justify-content:space-between;gap:6px;margin-top:8px}
+.act{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  width:68px;height:42px;border:0;border-radius:13px;background:rgb(var(--fill));color:rgb(var(--ink));cursor:default;
+  transition:transform .18s var(--ios),background .2s}
+.act:hover{transform:translateY(-1px)}
+.act:active{transform:scale(.93)}
+.act.on{background:rgb(var(--accent)/.18)}
+.act span{font-size:9.5px;font-weight:500;line-height:1;letter-spacing:-.005em}
+.act i{display:grid;place-items:center;height:19px}
+
+.tip{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px) scale(.96);
+  width:max-content;max-width:230px;padding:6px 10px;border-radius:10px;font-size:11px;line-height:1.35;
+  background:rgb(var(--glass));backdrop-filter:blur(20px) saturate(180%);border:1px solid rgb(var(--glass-edge));
+  box-shadow:var(--shadow);color:rgb(var(--ink));opacity:0;pointer-events:none;z-index:60;
+  transition:opacity .2s var(--ios),transform .25s var(--ios)}
+.act:hover .tip,.ib:hover .tip{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+.tip b{font-weight:600}
+
+/* Раскрывающаяся панель */
+.panel{overflow:hidden;max-height:0;opacity:0;transition:max-height .45s var(--ios),opacity .3s var(--ios)}
+.panel.open{max-height:330px;opacity:1}
+.sep{height:1px;margin:8px 0;background:rgb(var(--ink-3)/.5)}
+
+/* Микшер */
+.master{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:14px;background:rgb(var(--accent)/.12)}
+.row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:12px}
+.row .ico{display:grid;place-items:center;width:32px;height:32px;flex:0 0 auto;border-radius:9px;font-size:11px;font-weight:600;
+  background:rgb(var(--accent)/.22);cursor:default;border:0;color:rgb(var(--ink));transition:background .2s}
+.row .ico.mut{background:rgb(var(--fill));color:rgb(var(--ink-3))}
+.row .grow{min-width:0;flex:1}
+.lbl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:2px}
+.lbl .n{font-size:11.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lbl .v{font-size:10px;color:rgb(var(--ink-2));flex:0 0 auto}
+.sl{position:relative;height:18px;display:flex;align-items:center;cursor:pointer}
+.sl .rail{width:100%;height:4px;border-radius:999px;background:rgb(var(--fill));overflow:hidden;transition:height .2s var(--ios)}
+.sl:active .rail{height:7px}
+.sl .fill{height:100%;border-radius:999px;background:rgb(var(--accent));transition:width .12s linear}
+.mixlist{max-height:188px;overflow:auto;padding-right:4px}
+
+/* Чат */
+.chat{display:flex;flex-direction:column;gap:8px}
+.chathead{display:flex;align-items:center;justify-content:space-between}
+.code{border:0;border-radius:9px;padding:4px 8px;font-size:11px;font-weight:500;background:rgb(var(--fill));color:rgb(var(--ink));cursor:default}
+.circles{display:flex;gap:6px;overflow:auto;padding-bottom:2px}
+.circ{position:relative;width:48px;height:48px;flex:0 0 auto;border-radius:50%;overflow:hidden;display:grid;place-items:center;
+  font-size:13px;font-weight:600;color:rgb(var(--ink-2));background:rgb(var(--fill));box-shadow:0 0 0 2px rgb(var(--accent)/.5)}
+.circ canvas{width:100%;height:100%;display:block}
+.feed{display:flex;flex-direction:column;gap:6px;max-height:110px;overflow:auto;padding-right:4px}
+.msg{max-width:85%;padding:6px 10px;border-radius:12px;font-size:11.5px;background:rgb(var(--fill));align-self:flex-start}
+.msg.me{align-self:flex-end;background:rgb(var(--accent)/.22)}
+.msg .bar{height:4px;border-radius:999px;background:rgb(var(--fill));overflow:hidden;margin-top:4px}
+.msg .bar i{display:block;height:100%;background:rgb(var(--accent));border-radius:999px;transition:width .2s linear}
+.inp{height:32px;border:0;border-radius:11px;padding:0 10px;font:inherit;font-size:12px;background:rgb(var(--fill));color:rgb(var(--ink));outline:none;width:100%}
+
+/* HUD громкости */
+#hud{position:absolute;left:50%;top:-64px;transform:translateX(-50%) translateY(6px) scale(.92);
+  width:168px;padding:12px 16px;border-radius:18px;display:flex;flex-direction:column;align-items:center;gap:8px;
+  opacity:0;pointer-events:none;transition:opacity .22s var(--ios),transform .3s var(--ios);z-index:50}
+#hud.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}
+#hud .p{font-size:13px;font-weight:500}
+#hud .rail{width:100%;height:6px;border-radius:999px;background:rgb(var(--fill));overflow:hidden}
+#hud .fill{height:100%;background:rgb(var(--accent));border-radius:999px;transition:width .12s linear}
+
+/* Тост */
+#toast{position:absolute;left:0;right:0;bottom:2px;text-align:center;font-size:10.5px;color:rgb(var(--ink-2));
+  opacity:0;transition:opacity .25s}
+#toast.show{opacity:1}
+
+/* Подсказка слева */
+.help{position:fixed;left:24px;top:24px;width:292px;border-radius:20px;padding:16px 18px;z-index:30}
+.help h1{margin:0 0 2px;font-size:15px;font-weight:600;letter-spacing:-.015em}
+.help p{margin:0 0 12px;font-size:11.5px;line-height:1.5;color:rgb(var(--ink-2))}
+.help ol{margin:0;padding-left:16px;font-size:11.5px;line-height:1.75}
+.help li::marker{color:rgb(var(--ink-3))}
+.help kbd{font:inherit;font-size:10.5px;padding:1px 5px;border-radius:5px;background:rgb(var(--fill))}
+.help .btns{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.help button{border:0;border-radius:10px;padding:6px 11px;font:inherit;font-size:11.5px;font-weight:500;
+  background:rgb(var(--fill));color:rgb(var(--ink));cursor:default;transition:background .2s,transform .15s var(--ios)}
+.help button:hover{background:rgb(var(--accent)/.2)}
+.help button:active{transform:scale(.95)}
+
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<div class="desk"><div class="deskgrid"></div></div>
+
+<div class="help glass">
+  <h1>SnapDock — превью</h1>
+  <p>Это точная копия вида и поведения виджета из проекта. Скриншоты и системный звук здесь имитированы: браузер к ним не пускает, в Electron они настоящие.</p>
+  <ol>
+    <li>Потяните за ручку слева — виджет ездит</li>
+    <li>Колесо над стеклом — общая громкость</li>
+    <li>Не трогайте 5 секунд — уедет за край</li>
+    <li>Кнопка <b>Микшер</b> — панель приложений</li>
+    <li>Кнопка <b>Чат</b> — комната P2P</li>
+    <li><b>Область</b> и <b>Экран</b> кладут снимок в ленту</li>
+  </ol>
+  <div class="btns">
+    <button id="bTheme">Тёмная тема</button>
+    <button id="bTrack">Другой трек</button>
+    <button id="bMic">Живой звук с микрофона</button>
+  </div>
+</div>
+
+<div id="dockwrap">
+  <div id="hud" class="glass"><div class="p">70%</div><div class="rail"><i class="fill" style="width:70%"></i></div></div>
+
+  <div id="dock" class="glass">
+    <div class="ambient"></div>
+    <div class="grip" id="grip"><i></i></div>
+
+    <div class="body">
+      <!-- Сейчас играет -->
+      <div class="np">
+        <canvas id="eq"></canvas>
+        <div class="nprow">
+          <div class="cover"><canvas id="cover" width="96" height="96"></canvas><div class="ring" id="ring"></div></div>
+          <div class="meta">
+            <div class="title" id="mTitle">—</div>
+            <div class="artist" id="mArtist">—</div>
+          </div>
+          <div class="transport">
+            <button class="ib" id="bPrev" aria-label="Предыдущий"></button>
+            <button class="ib big" id="bPlay" aria-label="Пауза"></button>
+            <button class="ib" id="bNext" aria-label="Следующий"></button>
+            <button class="ib" id="bMix" aria-label="Микшер">
+              <span class="tip">Громкость каждого приложения отдельно</span>
+            </button>
+          </div>
+        </div>
+        <div class="prog">
+          <div class="track" id="track">
+            <div class="rail"><div class="fill" id="pFill" style="width:0%"></div></div>
+            <div class="knob" id="pKnob" style="left:-5px"></div>
+          </div>
+          <div class="time" id="pTime">0:00 / 0:00</div>
+        </div>
+      </div>
+
+      <!-- Лента снимков -->
+      <div class="tray" id="tray"></div>
+
+      <!-- Действия -->
+      <div class="acts">
+        <button class="act" id="aRegion"><i></i><span>Область</span>
+          <em class="tip">Выделить прямоугольник с лупой ×2. Виджет исчезнет на 0,25 с и не попадёт в кадр. <b>Ctrl+Shift+1</b></em></button>
+        <button class="act" id="aScreen"><i></i><span>Экран</span>
+          <em class="tip">Весь экран одним кликом. Виджет исчезнет на 0,25 с и не попадёт в кадр. <b>Ctrl+Shift+2</b></em></button>
+        <button class="act" id="aCopy"><i></i><span>Копия</span>
+          <em class="tip">Положить последний снимок в буфер обмена</em></button>
+        <button class="act" id="aSave"><i></i><span>Сейв</span>
+          <em class="tip">Сохранить в Изображения / SnapDock</em></button>
+        <button class="act" id="aChat"><i></i><span>Чат</span>
+          <em class="tip">Комната на 6 человек: кружки, чат, файлы напрямую между компьютерами</em></button>
+      </div>
+
+      <!-- Раскрывающаяся часть -->
+      <div class="panel" id="panel"><div class="sep"></div><div id="panelBody"></div></div>
+      <div id="toast"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+/* ---------- Иконки (SF Symbols по духу: одна толщина, круглые концы) ---------- */
+const svg = d => `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  region: svg('<path d="M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7M13 3h2.5A1.5 1.5 0 0 1 17 4.5V7M17 13v2.5a1.5 1.5 0 0 1-1.5 1.5H13M7 17H4.5A1.5 1.5 0 0 1 3 15.5V13"/>'),
+  screen: svg('<rect x="2.5" y="4" width="15" height="10.5" rx="2"/><path d="M7 17h6"/>'),
+  copy:   svg('<rect x="7" y="7" width="10" height="10" rx="2.2"/><path d="M13 4.6A1.6 1.6 0 0 0 11.4 3H4.6A1.6 1.6 0 0 0 3 4.6v6.8A1.6 1.6 0 0 0 4.6 13"/>'),
+  save:   svg('<path d="M10 3v9.5M6.5 9.5 10 13l3.5-3.5M3.5 15.5h13"/>'),
+  chat:   svg('<rect x="7.6" y="2.6" width="4.8" height="9" rx="2.4"/><path d="M4.6 9.4a5.4 5.4 0 0 0 10.8 0M10 14.8V17.4"/>'),
+  mixer:  svg('<path d="M5 3v4.2M5 11.8V17M10 3v8.4M10 15.6V17M15 3v1.4M15 8.6V17"/><circle cx="5" cy="9.5" r="2"/><circle cx="10" cy="13.5" r="2"/><circle cx="15" cy="6.5" r="2"/>'),
+  play:   '<svg width="20" height="20" viewBox="0 0 20 20"><path fill="currentColor" d="M6.5 4.4a.9.9 0 0 1 1.37-.77l8 5.1a.9.9 0 0 1 0 1.53l-8 5.1A.9.9 0 0 1 6.5 14.6z"/></svg>',
+  pause:  '<svg width="20" height="20" viewBox="0 0 20 20"><g fill="currentColor"><rect x="5.6" y="4" width="3.2" height="12" rx="1.3"/><rect x="11.2" y="4" width="3.2" height="12" rx="1.3"/></g></svg>',
+  next:   '<svg width="20" height="20" viewBox="0 0 20 20"><g fill="currentColor"><path d="M4 5.2a.8.8 0 0 1 1.22-.68l7 4.8a.8.8 0 0 1 0 1.36l-7 4.8A.8.8 0 0 1 4 14.8z"/><rect x="14" y="4.4" width="2.4" height="11.2" rx="1.2"/></g></svg>',
+  prev:   '<svg width="20" height="20" viewBox="0 0 20 20"><g fill="currentColor"><path d="M16 5.2a.8.8 0 0 0-1.22-.68l-7 4.8a.8.8 0 0 0 0 1.36l7 4.8A.8.8 0 0 0 16 14.8z"/><rect x="3.6" y="4.4" width="2.4" height="11.2" rx="1.2"/></g></svg>',
+  vol:    svg('<path fill="currentColor" stroke="none" d="M4 7.6h2.4L10 4.4v11.2L6.4 12.4H4z"/><path d="M12.6 7.6a3.4 3.4 0 0 1 0 4.8"/><path d="M14.8 5.4a6.5 6.5 0 0 1 0 9.2"/>'),
+  mute:   svg('<path fill="currentColor" stroke="none" d="M4 7.6h2.4L10 4.4v11.2L6.4 12.4H4z"/><path d="M13 8l4 4M17 8l-4 4"/>')
+};
+$('#bPrev').insertAdjacentHTML('afterbegin', I.prev);
+$('#bNext').insertAdjacentHTML('afterbegin', I.next);
+$('#bMix').insertAdjacentHTML('afterbegin', I.mixer);
+$('#aRegion i').innerHTML = I.region; $('#aScreen i').innerHTML = I.screen;
+$('#aCopy i').innerHTML = I.copy; $('#aSave i').innerHTML = I.save; $('#aChat i').innerHTML = I.chat;
+
+/* ---------- Данные ---------- */
+const tracks = [
+  { title: 'Пыль на проводах', artist: 'Хадн дадн', src: 'Spotify', dur: 228, hue: 18,  bpm: 104 },
+  { title: 'Nightcall',        artist: 'Kavinsky',  src: 'Spotify', dur: 258, hue: 302, bpm: 98  },
+  { title: 'Weightless',       artist: 'Marconi Union', src: 'VLC', dur: 484, hue: 186, bpm: 60  },
+  { title: 'Как устроен WASAPI', artist: 'YouTube · Chrome', src: 'Chrome', dur: 1142, hue: 212, bpm: 0 }
+];
+let ti = 0, playing = true, pos = 42, master = .7, muted = false;
+
+const apps = [
+  { n: 'Spotify',       v: .78, m: false, on: true  },
+  { n: 'Google Chrome', v: .45, m: false, on: true  },
+  { n: 'Discord',       v: .30, m: true,  on: true  },
+  { n: 'Zoom',          v: .90, m: false, on: false },
+  { n: 'Системные звуки', v: .60, m: false, on: false }
+];
+
+/* ---------- Обложка: генерируем, чтобы ambient-цвет был честным ---------- */
+function paintCover(hue) {
+  const c = $('#cover'), x = c.getContext('2d'), S = 96;
+  const g = x.createLinearGradient(0, 0, S, S);
+  g.addColorStop(0, `hsl(${hue} 85% 62%)`);
+  g.addColorStop(.55, `hsl(${(hue + 26) % 360} 72% 44%)`);
+  g.addColorStop(1, `hsl(${(hue + 300) % 360} 60% 22%)`);
+  x.fillStyle = g; x.fillRect(0, 0, S, S);
+  x.globalCompositeOperation = 'overlay';
+  for (let i = 0; i < 4; i++) {
+    const r = x.createRadialGradient(20 + i * 22, 78 - i * 19, 2, 20 + i * 22, 78 - i * 19, 46);
+    r.addColorStop(0, `hsl(${(hue + i * 34) % 360} 90% 70% / .55)`);
+    r.addColorStop(1, 'transparent');
+    x.fillStyle = r; x.beginPath(); x.arc(20 + i * 22, 78 - i * 19, 46, 0, 7); x.fill();
+  }
+  x.globalCompositeOperation = 'source-over';
+  return dominant(c);
+}
+/* Та же логика, что в src/lib/color.ts: отбрасываем серое и пересветы */
+function dominant(cv) {
+  const N = 16, t = el('canvas'); t.width = t.height = N;
+  const x = t.getContext('2d', { willReadFrequently: true });
+  x.drawImage(cv, 0, 0, N, N);
+  const d = x.getImageData(0, 0, N, N).data;
+  let br = 0, bg = 0, bb = 0, best = -1;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), lum = (mx + mn) / 2;
+    if (lum < 18 || lum > 244) continue;
+    const sat = mx === mn ? 0 : (mx - mn) / (255 - Math.abs(mx + mn - 255));
+    const score = sat * 1.4 + (1 - Math.abs(lum - 150) / 150) * .6;
+    if (score > best) { best = score; br = r; bg = g; bb = b; }
+  }
+  if (best < 0) return '255 255 255';
+  const f = 190 / Math.max(60, (br + bg + bb) / 3), fx = v => Math.round(clamp(v * f, 0, 255));
+  return `${fx(br)} ${fx(bg)} ${fx(bb)}`;
+}
+
+/* ---------- Эквалайзер ---------- */
+const BARS = 32;
+const lv = new Float32Array(BARS), pk = new Float32Array(BARS);
+let analyser = null, freq = null, live = false;
+
+const eq = $('#eq'), ex = eq.getContext('2d');
+function fitEq() {
+  const dpr = devicePixelRatio || 1;
+  eq.width = eq.clientWidth * dpr; eq.height = eq.clientHeight * dpr;
+  ex.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', fitEq);
+
+/* Пока нет системного loopback — генерим спектр, похожий на музыку:
+   бас в такт BPM, середина плавает, верх шуршит. */
+let t0 = performance.now();
+function fakeSpectrum(now) {
+  const t = (now - t0) / 1000, bpm = tracks[ti].bpm || 72;
+  const beat = Math.pow(Math.max(0, Math.sin(t * Math.PI * bpm / 60)), 6);
+  for (let i = 0; i < BARS; i++) {
+    const k = i / BARS;
+    const bass = Math.exp(-k * 7) * (.55 + beat * .55);
+    const mid = Math.exp(-Math.pow((k - .34) / .26, 2)) * (.32 + .26 * Math.sin(t * 1.7 + i * .5));
+    const air = Math.exp(-Math.pow((k - .82) / .3, 2)) * (.16 + .16 * Math.abs(Math.sin(t * 5.3 + i)));
+    const n = (Math.sin(i * 12.9898 + t * 3.1) * 43758.5453) % 1;
+    lv[i] = clamp(bass + mid + air + Math.abs(n) * .08) * (playing ? 1 : .05);
+  }
+}
+function realSpectrum() {
+  analyser.getByteFrequencyData(freq);
+  const ny = analyser.context.sampleRate / 2, N = freq.length;
+  for (let i = 0; i < BARS; i++) {
+    const a = Math.round((40 * Math.pow(16000 / 40, i / BARS) / ny) * N);
+    const b = Math.max(a + 1, Math.round((40 * Math.pow(16000 / 40, (i + 1) / BARS) / ny) * N));
+    let p = 0; for (let j = a; j < Math.min(b, N); j++) if (freq[j] > p) p = freq[j];
+    const tilt = 1 + (i / BARS) * .85;
+    const v = clamp(p / 255 * tilt);
+    lv[i] += (v - lv[i]) * (v > lv[i] ? .55 : .14);
+  }
+}
+function drawEq(now) {
+  live ? realSpectrum() : fakeSpectrum(now);
+  const w = eq.clientWidth, h = eq.clientHeight;
+  ex.clearRect(0, 0, w, h);
+  const a = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '255 255 255';
+  const dim = playing ? .6 : .18, gap = 2, bw = (w - gap * (BARS - 1)) / BARS;
+  for (let i = 0; i < BARS; i++) {
+    pk[i] = Math.max(lv[i], pk[i] - .012);
+    const bh = Math.max(1.5, lv[i] * h), x = i * (bw + gap), y = h - bh;
+    const edge = Math.min(1, Math.min(i, BARS - 1 - i) / 4);
+    const g = ex.createLinearGradient(0, h, 0, y);
+    g.addColorStop(0, `rgb(${a} / ${.20 * dim * edge})`);
+    g.addColorStop(1, `rgb(${a} / ${.85 * dim * edge})`);
+    ex.fillStyle = g; ex.beginPath(); ex.roundRect(x, y, bw, bh, bw / 2); ex.fill();
+    if (pk[i] > .05) {
+      ex.fillStyle = `rgb(${a} / ${.55 * dim * edge})`;
+      ex.beginPath(); ex.roundRect(x, h - pk[i] * h - 1.5, bw, 1.5, 1); ex.fill();
+    }
+  }
+  requestAnimationFrame(drawEq);
+}
+
+/* ---------- Плеер ---------- */
+function loadTrack(i) {
+  ti = (i + tracks.length) % tracks.length; pos = 0; t0 = performance.now();
+  const t = tracks[ti];
+  const accent = paintCover(t.hue);
+  document.documentElement.style.setProperty('--accent', accent);
+  const m = $('.meta');
+  $('#mTitle').textContent = t.title;
+  $('#mArtist').textContent = t.artist;
+  m.classList.remove('fadein'); void m.offsetWidth; m.classList.add('fadein');
+  renderProgress();
+}
+function renderProgress() {
+  const d = tracks[ti].dur, p = clamp(pos / d);
+  $('#pFill').style.width = (p * 100) + '%';
+  $('#pKnob').style.left = `calc(${p * 100}% - 5px)`;
+  $('#pTime').textContent = `${mmss(pos)} / ${mmss(d)}`;
+}
+function setPlaying(v) {
+  playing = v;
+  $('#bPlay').innerHTML = v ? I.pause : I.play;
+  $('#ring').style.display = v ? '' : 'none';
+}
+$('#bPlay').onclick = () => setPlaying(!playing);
+$('#bNext').onclick = () => loadTrack(ti + 1);
+$('#bPrev').onclick = () => (pos > 4 ? (pos = 0, renderProgress()) : loadTrack(ti - 1));
+$('#bTrack').onclick = () => loadTrack(ti + 1);
+
+setInterval(() => { if (playing) { pos = Math.min(tracks[ti].dur, pos + .25); renderProgress(); } }, 250);
+
+/* Перетаскивание прогресса */
+(() => {
+  const tr = $('#track'); let drag = false;
+  const pick = e => { const r = tr.getBoundingClientRect(); pos = clamp((e.clientX - r.left) / r.width) * tracks[ti].dur; renderProgress(); };
+  tr.addEventListener('pointerdown', e => { drag = true; tr.setPointerCapture(e.pointerId); pick(e); });
+  tr.addEventListener('pointermove', e => drag && pick(e));
+  tr.addEventListener('pointerup', () => drag = false);
+})();
+
+/* ---------- Панели ---------- */
+let panel = null;
+function setPanel(p) {
+  panel = panel === p ? null : p;
+  const body = $('#panelBody');
+  $('#panel').classList.toggle('open', !!panel);
+  $('#bMix').classList.toggle('on', panel === 'mixer');
+  $('#aChat').classList.toggle('on', panel === 'chat');
+  wake();
+  if (!panel) { setTimeout(() => { if (!panel) body.innerHTML = ''; }, 420); return; }
+  body.innerHTML = '';
+  body.append(panel === 'mixer' ? buildMixer() : buildChat());
+}
+$('#bMix').onclick = () => setPanel('mixer');
+$('#aChat').onclick = () => setPanel('chat');
+
+function slider(value, onChange, label) {
+  const s = el('div', 'sl');
+  s.innerHTML = '<div class="rail"><div class="fill"></div></div>';
+  s.setAttribute('role', 'slider'); s.setAttribute('aria-label', label); s.tabIndex = 0;
+  const fill = $('.fill', s);
+  const set = v => { fill.style.width = (v * 100) + '%'; onChange(v); };
+  set(value);
+  let drag = false;
+  const pick = e => { const r = s.getBoundingClientRect(); set(clamp((e.clientX - r.left) / r.width)); };
+  s.addEventListener('pointerdown', e => { drag = true; s.setPointerCapture(e.pointerId); pick(e); });
+  s.addEventListener('pointermove', e => drag && pick(e));
+  s.addEventListener('pointerup', () => drag = false);
+  s.set = set;
+  return s;
+}
+
+function buildMixer() {
+  const wrap = el('div');
+  const m = el('div', 'master');
+  const mb = el('button', 'ib', muted ? I.mute : I.vol);
+  mb.onclick = () => { muted = !muted; mb.innerHTML = muted ? I.mute : I.vol; ms.set(muted ? 0 : master); mv.textContent = Math.round((muted ? 0 : master) * 100) + '%'; };
+  const grow = el('div', 'grow');
+  const lbl = el('div', 'lbl', '<span class="n" style="font-weight:600">Общая громкость</span>');
+  const mv = el('span', 'v', Math.round((muted ? 0 : master) * 100) + '%'); lbl.append(mv);
+  const ms = slider(muted ? 0 : master, v => { master = v; muted = false; mv.textContent = Math.round(v * 100) + '%'; syncHud(); }, 'Общая громкость');
+  grow.append(lbl, ms); m.append(mb, grow); wrap.append(m);
+
+  const list = el('div', 'mixlist');
+  apps.slice().sort((a, b) => b.on - a.on).forEach(a => {
+    const row = el('div', 'row');
+    const ico = el('button', 'ico' + (a.m ? ' mut' : ''), a.n.slice(0, 2));
+    const g = el('div', 'grow');
+    const l = el('div', 'lbl', `<span class="n">${a.n}</span>`);
+    const val = el('span', 'v', a.m ? 'без звука' : Math.round(a.v * 100) + '%'); l.append(val);
+    const sl = slider(a.m ? 0 : a.v, v => { a.v = v; a.m = false; ico.classList.remove('mut'); val.textContent = Math.round(v * 100) + '%'; }, a.n);
+    ico.onclick = () => { a.m = !a.m; ico.classList.toggle('mut', a.m); sl.set(a.m ? 0 : a.v); val.textContent = a.m ? 'без звука' : Math.round(a.v * 100) + '%'; };
+    g.append(l, sl); row.append(ico, g); list.append(row);
+  });
+  wrap.append(list);
+  return wrap;
+}
+
+function buildChat() {
+  const c = el('div', 'chat');
+  const code = 'snapdock-' + Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  const head = el('div', 'chathead');
+  const btn = el('button', 'code', code);
+  btn.onclick = () => { navigator.clipboard?.writeText(code); toast('Код комнаты скопирован'); };
+  head.append(btn, el('span', '', '<span style="font-size:10.5px;color:rgb(var(--ink-2))">3 из 7</span>'), el('span', '', '<span style="font-size:11px;color:rgb(var(--ink-2))">Выйти</span>'));
+
+  const circles = el('div', 'circles');
+  ['Я', 'ИВ', 'АК'].forEach((n, i) => {
+    const d = el('div', 'circ');
+    if (i === 0) { const cc = el('canvas'); cc.width = cc.height = 96; const x = cc.getContext('2d');
+      const g = x.createLinearGradient(0, 0, 96, 96); g.addColorStop(0, '#5ac8fa'); g.addColorStop(1, '#0a84ff');
+      x.fillStyle = g; x.fillRect(0, 0, 96, 96); x.fillStyle = 'rgba(255,255,255,.85)';
+      x.beginPath(); x.arc(48, 38, 16, 0, 7); x.fill();
+      x.beginPath(); x.ellipse(48, 86, 30, 26, 0, 0, 7); x.fill(); d.append(cc); }
+    else d.textContent = n;
+    circles.append(d);
+  });
+
+  const feed = el('div', 'feed');
+  feed.append(
+    el('div', 'msg', 'Скинь исходник, у меня старая версия'),
+    el('div', 'msg me', 'Сейчас, тащу прямо из ленты снимков')
+  );
+  const fm = el('div', 'msg me');
+  fm.innerHTML = '<div style="display:flex;gap:8px;align-items:baseline"><span style="font-weight:500">SnapDock 2026-09-15.png</span><span style="font-size:10px;color:rgb(var(--ink-2))">1,8 МБ</span></div><div class="bar"><i style="width:0%"></i></div>';
+  feed.append(fm);
+  let p = 0; const iv = setInterval(() => { p = Math.min(1, p + .07); $('i', $('.bar', fm)).style.width = (p * 100) + '%';
+    if (p >= 1) { clearInterval(iv); $('.bar', fm).outerHTML = '<div style="font-size:10.5px;text-decoration:underline;margin-top:2px">Сохранить</div>'; } }, 90);
+
+  const inp = el('input', 'inp'); inp.placeholder = 'Сообщение';
+  inp.onkeydown = e => { if (e.key === 'Enter' && inp.value.trim()) { feed.append(el('div', 'msg me', inp.value)); inp.value = ''; feed.scrollTop = 1e6; } };
+
+  c.append(head, circles, feed, inp);
+  return c;
+}
+
+/* ---------- Снимки ---------- */
+const shots = [];
+function grab(kind) {
+  const w = $('#dockwrap');
+  w.style.transition = 'opacity .12s'; w.style.opacity = '0';   // ровно так же прячется настоящее окно
+  setTimeout(() => {
+    const c = el('canvas'); c.width = 208; c.height = 136;
+    const x = c.getContext('2d');
+    const hue = (Date.now() / 37) % 360;
+    const g = x.createLinearGradient(0, 0, 208, 136);
+    g.addColorStop(0, `hsl(${hue} 55% 88%)`); g.addColorStop(1, `hsl(${(hue + 40) % 360} 45% 66%)`);
+    x.fillStyle = g; x.fillRect(0, 0, 208, 136);
+    x.fillStyle = 'rgba(255,255,255,.7)';
+    x.beginPath(); x.roundRect(kind === 'region' ? 40 : 14, 22, kind === 'region' ? 120 : 180, kind === 'region' ? 84 : 96, 8); x.fill();
+    x.fillStyle = 'rgba(0,0,0,.22)';
+    for (let i = 0; i < 5; i++) { x.beginPath(); x.roundRect(kind === 'region' ? 52 : 28, 36 + i * 15, (kind === 'region' ? 92 : 150) - i * 12, 5, 3); x.fill(); }
+    shots.unshift({ c, id: Math.random().toString(36).slice(2) });
+    shots.length = Math.min(shots.length, 5);
+    renderTray(shots[0].id);
+    w.style.opacity = '1';
+    toast(kind === 'region' ? 'Область снята' : 'Экран снят');
+  }, 250);
+}
+let selected = null;
+function renderTray(sel) {
+  if (sel) selected = sel;
+  const t = $('#tray'); t.innerHTML = '';
+  t.classList.toggle('show', shots.length > 0);
+  shots.forEach(s => {
+    const d = el('div', 'shot' + (s.id === selected ? ' sel' : ''));
+    d.append(s.c); d.draggable = true;
+    d.onclick = () => renderTray(s.id);
+    t.append(d);
+  });
+  if (shots.length) t.append(el('span', 'trayhint', 'тащите<br>в чат'));
+}
+$('#aRegion').onclick = () => grab('region');
+$('#aScreen').onclick = () => grab('screen');
+$('#aCopy').onclick = () => toast(shots.length ? 'Скопировано в буфер' : 'Сначала сделайте снимок');
+$('#aSave').onclick = () => toast(shots.length ? 'Сохранено в Изображения / SnapDock' : 'Сначала сделайте снимок');
+
+let tt;
+function toast(s) { const t = $('#toast'); t.textContent = s; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2000); }
+
+/* ---------- Перетаскивание, уход за край, колесо ---------- */
+const wrap = $('#dockwrap'), dock = $('#dock');
+let X = null, Y = null, idle;
+function wake() { wrap.classList.remove('peek'); clearTimeout(idle); if (!panel) idle = setTimeout(() => wrap.classList.add('peek'), 5000); }
+wrap.addEventListener('pointerenter', wake);
+wrap.addEventListener('pointermove', wake);
+wake();
+
+(() => {
+  const g = $('#grip'); let last = null;
+  g.addEventListener('pointerdown', e => {
+    last = { x: e.clientX, y: e.clientY }; g.setPointerCapture(e.pointerId); dock.classList.add('lift');
+    const r = wrap.getBoundingClientRect();
+    X = r.left; Y = r.top; wrap.style.right = 'auto'; wrap.style.bottom = 'auto';
+    wrap.style.left = X + 'px'; wrap.style.top = Y + 'px'; wrap.style.transition = 'none';
+  });
+  g.addEventListener('pointermove', e => {
+    if (!last) return;
+    X += e.clientX - last.x; Y += e.clientY - last.y; last = { x: e.clientX, y: e.clientY };
+    wrap.style.left = X + 'px'; wrap.style.top = Y + 'px';
+  });
+  g.addEventListener('pointerup', () => {
+    if (!last) return; last = null; dock.classList.remove('lift');
+    wrap.style.transition = 'left .5s var(--ios), top .5s var(--ios), transform .55s var(--ios)';
+    const left = X + 190 < innerWidth / 2;
+    X = left ? 24 : innerWidth - 380 - 24;
+    Y = clamp(Y, 8, innerHeight - dock.offsetHeight - 8);
+    wrap.style.left = X + 'px'; wrap.style.top = Y + 'px';
+    wrap.style.setProperty('--peekx', left ? '-370px' : '370px');
+    toast(left ? 'Прилипло к левому краю' : 'Прилипло к правому краю');
+  });
+})();
+
+let hudT;
+function syncHud() {
+  $('#hud .p').textContent = Math.round(master * 100) + '%';
+  $('#hud .fill').style.width = (master * 100) + '%';
+}
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  master = clamp(master - Math.sign(e.deltaY) * .04); muted = false;
+  syncHud(); $('#hud').classList.add('show');
+  clearTimeout(hudT); hudT = setTimeout(() => $('#hud').classList.remove('show'), 900);
+}, { passive: false });
+
+/* ---------- Тема и живой звук ---------- */
+$('#bTheme').onclick = e => {
+  const d = document.documentElement.classList.toggle('dark');
+  e.target.textContent = d ? 'Светлая тема' : 'Тёмная тема';
+};
+if (matchMedia('(prefers-color-scheme: dark)').matches) { document.documentElement.classList.add('dark'); $('#bTheme').textContent = 'Светлая тема'; }
+
+$('#bMic').onclick = async e => {
+  if (live) return;
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false } });
+    const ctx = new AudioContext();
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048; analyser.smoothingTimeConstant = .72;
+    analyser.minDecibels = -78; analyser.maxDecibels = -12;
+    ctx.createMediaStreamSource(st).connect(analyser);
+    freq = new Uint8Array(analyser.frequencyBinCount);
+    live = true; e.target.textContent = 'Звук идёт с микрофона';
+    toast('EQ теперь показывает настоящий звук');
+  } catch { toast('Микрофон не разрешён'); }
+};
+
+/* ---------- Старт ---------- */
+fitEq(); setPlaying(true); loadTrack(0); requestAnimationFrame(drawEq);
+</script>
+</body>
+</html>

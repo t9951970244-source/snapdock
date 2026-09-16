@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --glass: 255 255 255 / 0.84;
+  --surface: 242 242 245;
+  --glass-edge: 255 255 255 / 0.40;
+  --ink: 0 0 0 / 0.88;
+  --ink-2: 60 60 67 / 0.60;
+  --ink-3: 60 60 67 / 0.30;
+  --fill: 120 120 128 / 0.16;
+  --shadow: 0 8px 32px rgb(0 0 0 / 0.12);
+  --accent: 255 255 255;        /* перекрашивается доминантой обложки */
+  --blur: 28px;
+}
+.theme-dark {
+  --glass: 28 28 30 / 0.88;
+  --surface: 28 28 30;
+  --glass-edge: 255 255 255 / 0.12;
+  --ink: 255 255 255 / 0.92;
+  --ink-2: 235 235 245 / 0.60;
+  --ink-3: 235 235 245 / 0.28;
+  --fill: 120 120 128 / 0.32;
+  --shadow: 0 8px 32px rgb(0 0 0 / 0.45);
+}
+
+html, body, #root { height: 100%; margin: 0; background: transparent; }
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'tnum' 1, 'ss01' 1;
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* Непрозрачная подложка для больших окон: там читаемость важнее эффекта */
+.surface {
+  position: relative;
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--glass-edge));
+}
+
+/* Стекло Control Center: размытие + подъём насыщенности + световая кромка сверху */
+.glass {
+  background: rgb(var(--glass));
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(180%);
+  backdrop-filter: blur(var(--blur)) saturate(180%);
+  border: 1px solid rgb(var(--glass-edge));
+  box-shadow: var(--shadow);
+}
+.glass::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.28), transparent 42%);
+}
+
+/* Ambient: доминанта обложки проступает сквозь стекло */
+.ambient {
+  position: absolute; inset: -40% -20% auto -20%; height: 180%;
+  border-radius: inherit; pointer-events: none;
+  background: radial-gradient(60% 80% at 18% 0%, rgb(var(--accent) / 0.38), transparent 70%);
+  filter: blur(18px);
+  transition: background 700ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.no-drag { -webkit-app-region: no-drag; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
+button:focus-visible, [role='slider']:focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.9); outline-offset: 2px; border-radius: 8px;
+}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--ink-3)); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@keyframes spin { to { transform: rotate(360deg) } }
