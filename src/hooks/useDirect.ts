@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { deriveKey, seal, unseal, sealBin, unsealBin, packSealed, unpackSealed } from '@/lib/crypto'
+import { deriveKey, seal, unseal, sealBin, unsealBin, packSealed, unpackSealed, toB64, fromB64 } from '@/lib/crypto'
 import { bytes } from '@/lib/format'
 import { t } from '@/lib/i18n'
 import type { ChatItem } from './usePeer'
@@ -22,12 +22,46 @@ const STUN = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ]
 
-export type Phase = 'idle' | 'madeOffer' | 'madeAnswer' | 'live' | 'failed'
+export type Phase = 'idle' | 'madeOffer' | 'madeAnswer' | 'connecting' | 'live' | 'failed'
 
 const rid = () => Math.random().toString(36).slice(2, 6)
-const pack = (o: unknown) => btoa(unescape(encodeURIComponent(JSON.stringify(o))))
-const unpack = <T,>(s: string): T | null => {
-  try { return JSON.parse(decodeURIComponent(escape(atob(s.trim())))) as T } catch { return null }
+const MARK = 'SD1'
+
+/**
+ * Описание связи — это несколько килобайт очень однообразного текста.
+ * Сжатие уменьшает его в четыре-пять раз, поэтому код влезает в одно сообщение.
+ */
+async function squeeze(s: string): Promise<string> {
+  const stream = new Blob([new TextEncoder().encode(s)]).stream()
+    .pipeThrough(new CompressionStream('deflate-raw'))
+  return MARK + toB64(await new Response(stream).arrayBuffer())
+}
+async function expand(s: string): Promise<string> {
+  const stream = new Blob([new Uint8Array(fromB64(s))]).stream()
+    .pipeThrough(new DecompressionStream('deflate-raw'))
+  return new Response(stream).text()
+}
+
+/** Выбрасываем то, что всё равно не пригодится: занимает место, пользы ноль. */
+function slimSdp(sdp: string): string {
+  return sdp.split(/\r?\n/).filter((l) => {
+    if (l.startsWith('a=candidate:')) {
+      if (/ tcptype /.test(l)) return false          // резервные пути по tcp почти не используются
+      if (/ typ relay /.test(l)) return false        // ретрансляторов у нас нет
+    }
+    return l.length > 0
+  }).join('\r\n') + '\r\n'
+}
+
+const pack = (o: unknown) => squeeze(JSON.stringify(o))
+
+async function unpack<T>(s: string): Promise<T | null> {
+  // Мессенджеры переносят длинные строки и добавляют пробелы — вычищаем всё лишнее
+  const clean = s.replace(/\s+/g, '')
+  try {
+    if (clean.startsWith(MARK)) return JSON.parse(await expand(clean.slice(MARK.length))) as T
+    return JSON.parse(decodeURIComponent(escape(atob(clean)))) as T   // старый несжатый формат
+  } catch { return null }
 }
 
 export function useDirect() {
@@ -115,29 +149,48 @@ export function useDirect() {
     bindChannel(p.createDataChannel('snapdock', { ordered: true }))
     await p.setLocalDescription(await p.createOffer())
     await gathered(p)
-    setCode(pack({ v: 1, sdp: p.localDescription!.sdp, type: 'offer' }))
+    setCode(await pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'offer' }))
     setPhase('madeOffer')
   }, [makePc, bindChannel])
 
   /** Второй участник: вставляет чужой код, получает свой ответный. */
   const acceptOffer = useCallback(async (password: string, offer: string) => {
     setError(null)
-    const o = unpack<{ sdp: string; type: string }>(offer)
+    const o = await unpack<{ sdp: string; type: string }>(offer)
     if (!o?.sdp) { setError(t('badCode')); return }
-    const p = await makePc(password)
-    p.ondatachannel = (e) => bindChannel(e.channel)
-    await p.setRemoteDescription({ type: 'offer', sdp: o.sdp })
-    await p.setLocalDescription(await p.createAnswer())
-    await gathered(p)
-    setCode(pack({ v: 1, sdp: p.localDescription!.sdp, type: 'answer' }))
-    setPhase('madeAnswer')
+    if (o.type !== 'offer') { setError(t('wrongHalf')); return }
+    try {
+      const p = await makePc(password)
+      p.ondatachannel = (e) => bindChannel(e.channel)
+      await p.setRemoteDescription({ type: 'offer', sdp: o.sdp })
+      await p.setLocalDescription(await p.createAnswer())
+      await gathered(p)
+      setCode(await pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'answer' }))
+      setPhase('madeAnswer')
+    } catch (err: any) {
+      setPhase('failed')
+      setError(`${t('directFailed')} ${String(err?.message ?? err)}`)
+    }
   }, [makePc, bindChannel])
 
   /** Первый участник: вставляет ответный код — и связь установлена. */
   const acceptAnswer = useCallback(async (answer: string) => {
-    const a = unpack<{ sdp: string; type: string }>(answer)
-    if (!a?.sdp || !pc.current) { setError(t('badCode')); return }
-    await pc.current.setRemoteDescription({ type: 'answer', sdp: a.sdp })
+    const a = await unpack<{ sdp: string; type: string }>(answer)
+    if (!a?.sdp) { setError(t('badCode')); return }
+    if (a.type !== 'answer') { setError(t('wrongHalf')); return }
+    if (!pc.current) { setError(t('badCode')); return }
+    try {
+      setError(null)
+      setPhase('connecting')
+      await pc.current.setRemoteDescription({ type: 'answer', sdp: a.sdp })
+      // Канал открывается не мгновенно. Если за двадцать секунд не открылся — это отказ.
+      setTimeout(() => {
+        if (dc.current?.readyState !== 'open') { setPhase('failed'); setError(t('directFailed')) }
+      }, 20000)
+    } catch (err: any) {
+      setPhase('failed')
+      setError(`${t('directFailed')} ${String(err?.message ?? err)}`)
+    }
   }, [])
 
   const hangUp = useCallback(() => {

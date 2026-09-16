@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import '../../src/index.css'
 import { prefersDark } from '../../src/lib/color'
 import { initLang, setLang, t, useLang } from '../../src/lib/i18n'
+import { useClipboardKeys } from '../../src/lib/clipboard'
 
 type Tool = 'crop' | 'arrow' | 'text' | 'blur'
 type Shape =
@@ -25,6 +26,7 @@ function Editor() {
   const start = useRef<{ x: number; y: number } | null>(null)
 
   useLang()
+  useClipboardKeys()
   useEffect(() => {
     window.snap?.getLang().then((l) => (l ? setLang(l) : initLang()))
     return window.snap?.onLang(setLang)

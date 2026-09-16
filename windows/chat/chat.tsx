@@ -6,6 +6,7 @@ import { useDirect } from '../../src/hooks/useDirect'
 import { prefersDark } from '../../src/lib/color'
 import { bytes } from '../../src/lib/format'
 import { initLang, setLang, t, useLang } from '../../src/lib/i18n'
+import { useClipboardKeys } from '../../src/lib/clipboard'
 
 /** Плитка участника. Сетка сама подбирает число колонок под размер окна. */
 function Tile({ stream, name, me }: { stream?: MediaStream; name: string; me?: boolean }) {
@@ -50,10 +51,17 @@ function Chat() {
     setTimeout(() => setCopied(''), 1800)
   }
   const flash = (what: 'code' | 'pass', value: string) => copyAny(value, what)
+
+  /** Вставка из буфера кнопкой — на случай, если клавиши всё-таки недоступны. */
+  const pasteInto = async (set: (v: string) => void) => {
+    const text = (await window.snap?.readText()) ?? ''
+    if (text.trim()) set(text.trim())
+  }
   const [over, setOver] = useState(false)
   const feed = useRef<HTMLDivElement>(null)
 
   useLang()
+  useClipboardKeys()
   useEffect(() => { document.documentElement.classList.toggle('theme-dark', prefersDark()) }, [])
   useEffect(() => {
     window.snap?.getLang().then((l) => (l ? setLang(l) : initLang()))
@@ -150,16 +158,25 @@ function Chat() {
                       style={{ background: 'rgb(var(--accent) / 0.22)' }}>
                 {t('makeInvite')}
               </button>
-              <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
-                        placeholder={t('pasteInvite')} rows={3}
-                        className="w-[320px] resize-none rounded-[12px] p-3 text-[11px] outline-none"
-                        style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
-              <button onClick={() => pw.trim() && inBox.trim() && d.acceptOffer(pw, inBox)}
-                      disabled={!pw.trim() || !inBox.trim()}
-                      className="h-10 w-[320px] rounded-[12px] text-[12.5px] font-medium disabled:opacity-40"
-                      style={{ background: 'rgb(var(--fill))' }}>
-                {t('accept')}
-              </button>
+              <div className="flex w-[320px] flex-col gap-2">
+                <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
+                          placeholder={t('pasteInvite')} rows={3}
+                          className="selectable w-full resize-none rounded-[12px] p-3 text-[11px] outline-none"
+                          style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+                <div className="flex gap-2">
+                  <button onClick={() => pasteInto(setInBox)}
+                          className="h-10 flex-1 rounded-[12px] text-[12.5px] font-medium"
+                          style={{ background: 'rgb(var(--fill))' }}>
+                    {t('pasteBtn')}
+                  </button>
+                  <button onClick={() => pw.trim() && inBox.trim() && d.acceptOffer(pw, inBox)}
+                          disabled={!pw.trim() || !inBox.trim()}
+                          className="h-10 flex-1 rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
+                          style={{ background: 'rgb(var(--accent) / 0.22)' }}>
+                    {t('accept')}
+                  </button>
+                </div>
+              </div>
             </>
           )}
 
@@ -178,24 +195,42 @@ function Chat() {
                       style={{ background: copied === 'invite' ? 'rgb(48 209 88 / 0.28)' : 'rgb(var(--accent) / 0.22)' }}>
                 {copied === 'invite' ? `${t('done')} ✓` : t('copyCode')}
               </button>
-              <p className="text-[10.5px]" style={{ color: 'rgb(var(--ink-3))' }}>{t('orSelect')}</p>
+              <p className="text-[10.5px]" style={{ color: 'rgb(var(--ink-3))' }}>
+                {t('orSelect')} · {d.code.length} {t('chars')}
+              </p>
               {d.phase === 'madeOffer' && (
                 <>
                   <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
                             placeholder={t('pasteAnswer')} rows={3}
-                            className="mt-1 resize-none rounded-[12px] p-3 text-[11px] outline-none"
+                            className="selectable mt-1 resize-none rounded-[12px] p-3 text-[11px] outline-none"
                             style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
-                  <button onClick={() => inBox.trim() && d.acceptAnswer(inBox)} disabled={!inBox.trim()}
-                          className="h-10 rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
-                          style={{ background: 'rgb(var(--accent) / 0.22)' }}>
-                    {t('connectNow')}
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => pasteInto(setInBox)}
+                            className="h-10 flex-1 rounded-[12px] text-[12.5px] font-medium"
+                            style={{ background: 'rgb(var(--fill))' }}>
+                      {t('pasteBtn')}
+                    </button>
+                    <button onClick={() => inBox.trim() && d.acceptAnswer(inBox)} disabled={!inBox.trim()}
+                            className="h-10 flex-1 rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
+                            style={{ background: 'rgb(var(--accent) / 0.22)' }}>
+                      {t('connectNow')}
+                    </button>
+                  </div>
                 </>
               )}
             </div>
           )}
 
-          {d.error && <p className="max-w-[440px] text-[12px]" style={{ color: '#ff453a' }}>{d.error}</p>}
+          {d.phase === 'connecting' && (
+            <div className="flex items-center gap-2.5 text-[12.5px]" style={{ color: 'rgb(var(--ink))' }}>
+              <span className="h-3 w-3 rounded-full border-2 border-current border-r-transparent"
+                    style={{ animation: 'spin 0.9s linear infinite' }} />
+              {t('connecting')}
+            </div>
+          )}
+          {d.error && (
+            <p className="selectable max-w-[440px] text-[12px]" style={{ color: '#ff453a' }}>{d.error}</p>
+          )}
         </div>
       ) : mode === 'direct' ? (
         <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4"
@@ -265,6 +300,7 @@ function Chat() {
           </button>
           <div className="flex w-[280px] gap-2">
             <input value={code} onChange={(e) => setCode(e.target.value.trim())}
+                   onDoubleClick={() => pasteInto(setCode)}
                    placeholder="snapdock-xxxx"
                    onKeyDown={(e) => e.key === 'Enter' && code && pw.trim() && p.join(code, pw)}
                    className="h-10 min-w-0 flex-1 rounded-[12px] px-3 text-[12.5px] outline-none"

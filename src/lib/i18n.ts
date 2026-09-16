@@ -101,6 +101,10 @@ const dict = {
     directFailed: 'Прямая связь не установилась. Обычно мешает строгий роутер или корпоративная сеть.',
     directLive: 'Связь установлена напрямую',
     orSelect: 'Или выделите текст в поле выше и нажмите Cmd+C',
+    pasteBtn: 'Вставить',
+    wrongHalf: 'Это не тот код. В верхнее поле идёт код приглашения, в нижнее — ответный.',
+    connecting: 'Устанавливаю связь…',
+    chars: 'символов',
     saveFile: 'Сохранить',
     lostLink: 'Связь потеряна. Комната та же, нажмите «Переподключить».',
 
@@ -208,6 +212,10 @@ const dict = {
     directFailed: 'The direct link did not come up. A strict router or a corporate network is the usual cause.',
     directLive: 'Connected directly',
     orSelect: 'Or select the text above and press Cmd+C',
+    pasteBtn: 'Paste',
+    wrongHalf: 'Wrong code. The invitation goes in the top box, the reply in the bottom one.',
+    connecting: 'Establishing the link…',
+    chars: 'characters',
     saveFile: 'Save',
     lostLink: 'Connection lost. Same room — press Reconnect.',
 

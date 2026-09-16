@@ -6,7 +6,8 @@ import { clamp } from '@/lib/format'
 
 /**
  * Стеклянная оболочка виджета.
- *  • ручка слева тащит окно, при отпускании прилипает к ближнему краю экрана;
+ *  • тащится за любое место стекла, кроме кнопок и ползунков;
+ *  • встаёт туда, куда принесли: прилипания к краю нет, только защита от улёта;
  *  • колесо над стеклом крутит общую громкость, как в строке меню macOS;
  *  • панель под шапкой растёт пружиной, окно подстраивает высоту под содержимое.
  * Самопрятание за край убрано: содержимое обрезалось границей окна и виджет
@@ -40,23 +41,21 @@ export function Dock({
         <motion.div
           layout
           transition={spring}
-          className="glass relative m-[10px] overflow-hidden rounded-dock"
+          className="glass relative m-[10px] cursor-grab overflow-hidden rounded-dock active:cursor-grabbing"
+          onPointerDown={(e) => {
+            // Кнопки, ползунки и поля помечены no-drag — на них перетаскивание не начинаем
+            if ((e.target as HTMLElement).closest('.no-drag')) return
+            e.currentTarget.setPointerCapture(e.pointerId)
+            window.snap?.dragStart()
+          }}
+          onPointerUp={() => { window.snap?.dragEnd(); window.snap?.settle() }}
+          onPointerCancel={() => { window.snap?.dragEnd(); window.snap?.settle() }}
         >
           <div className="ambient" />
 
           {/* ручка перетаскивания: окно ведёт за курсором главный процесс */}
-          <div
-            className="no-drag absolute left-0 top-0 z-20 flex h-full w-[14px] cursor-grab items-center justify-center active:cursor-grabbing"
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId)
-              window.snap?.dragStart()
-            }}
-            onPointerUp={async () => {
-              window.snap?.dragEnd()
-              await window.snap?.snapToEdge()
-            }}
-            onPointerCancel={() => window.snap?.dragEnd()}
-          >
+          {/* Полоска слева осталась подсказкой: тянуть можно за любое место стекла */}
+          <div className="pointer-events-none absolute left-0 top-0 z-20 flex h-full w-[14px] items-center justify-center">
             <IGrip style={{ color: 'rgb(var(--ink-3))' }} />
           </div>
 
