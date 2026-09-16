@@ -34,12 +34,22 @@ function Chat() {
   const d = useDirect()
   const [mode, setMode] = useState<'room' | 'direct'>('room')
   const [inBox, setInBox] = useState('')
-  const [copied, setCopied] = useState<'' | 'code' | 'pass'>('')
-  const flash = (what: 'code' | 'pass', value: string) => {
-    window.snap?.copyText(value)
-    setCopied(what)
-    setTimeout(() => setCopied(''), 1600)
+  const [copied, setCopied] = useState<'' | 'code' | 'pass' | 'invite'>('')
+  const inviteBox = useRef<HTMLTextAreaElement>(null)
+
+  /** Три пути подряд: системный буфер, браузерный, выделение в поле. */
+  const copyAny = async (text: string, mark: 'code' | 'pass' | 'invite') => {
+    let done = false
+    try { done = !!(await window.snap?.copyText(text)) } catch { /* дальше */ }
+    if (!done) { try { await navigator.clipboard.writeText(text); done = true } catch { /* дальше */ } }
+    if (!done && inviteBox.current) {
+      inviteBox.current.focus(); inviteBox.current.select()
+      try { done = document.execCommand('copy') } catch { /* всё */ }
+    }
+    setCopied(done ? mark : '')
+    setTimeout(() => setCopied(''), 1800)
   }
+  const flash = (what: 'code' | 'pass', value: string) => copyAny(value, what)
   const [over, setOver] = useState(false)
   const feed = useRef<HTMLDivElement>(null)
 
@@ -158,14 +168,17 @@ function Chat() {
               <p className="text-[12px]" style={{ color: 'rgb(var(--ink))' }}>
                 {d.phase === 'madeOffer' ? t('inviteReady') : t('answerReady')}
               </p>
-              <textarea readOnly value={d.code} rows={4} onFocus={(e) => e.currentTarget.select()}
-                        className="resize-none rounded-[12px] p-3 text-[10px] outline-none"
+              <textarea ref={inviteBox} readOnly value={d.code} rows={4}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onClick={(e) => e.currentTarget.select()}
+                        className="selectable resize-none rounded-[12px] p-3 text-[10px] outline-none"
                         style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink-2))' }} />
-              <button onClick={() => window.snap?.copyText(d.code)}
+              <button onClick={() => copyAny(d.code, 'invite')}
                       className="h-9 rounded-[11px] text-[12px] font-medium"
-                      style={{ background: 'rgb(var(--accent) / 0.22)' }}>
-                {t('copyCode')}
+                      style={{ background: copied === 'invite' ? 'rgb(48 209 88 / 0.28)' : 'rgb(var(--accent) / 0.22)' }}>
+                {copied === 'invite' ? `${t('done')} ✓` : t('copyCode')}
               </button>
+              <p className="text-[10.5px]" style={{ color: 'rgb(var(--ink-3))' }}>{t('orSelect')}</p>
               {d.phase === 'madeOffer' && (
                 <>
                   <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
@@ -203,7 +216,7 @@ function Chat() {
               )}
               {d.chat.map((c) => (
                 <div key={c.id}
-                     className={`max-w-[88%] rounded-[12px] px-2.5 py-1.5 text-[12px] ${c.mine ? 'self-end' : 'self-start'}`}
+                     className={`selectable max-w-[88%] rounded-[12px] px-2.5 py-1.5 text-[12px] ${c.mine ? 'self-end' : 'self-start'}`}
                      style={{ background: c.mine ? 'rgb(var(--accent) / 0.22)' : 'rgb(var(--fill))' }}>
                   {c.kind === 'text' ? c.text : (
                     <div className="flex flex-col gap-1">

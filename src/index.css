@@ -68,6 +68,14 @@ body {
 }
 
 .no-drag { -webkit-app-region: no-drag; }
+/* Запрет выделения нужен виджету при перетаскивании, но поля ввода и переписку
+   человек должен уметь выделить и скопировать руками. */
+input, textarea, .selectable, .selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
+}
+
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
 button:focus-visible, [role='slider']:focus-visible {
   outline: 2px solid rgb(var(--accent) / 0.9); outline-offset: 2px; border-radius: 8px;

@@ -100,6 +100,7 @@ const dict = {
     badCode: 'Код не распознан. Скопируйте его целиком, без пробелов по краям.',
     directFailed: 'Прямая связь не установилась. Обычно мешает строгий роутер или корпоративная сеть.',
     directLive: 'Связь установлена напрямую',
+    orSelect: 'Или выделите текст в поле выше и нажмите Cmd+C',
     saveFile: 'Сохранить',
     lostLink: 'Связь потеряна. Комната та же, нажмите «Переподключить».',
 
@@ -206,6 +207,7 @@ const dict = {
     badCode: 'Could not read the code. Copy all of it, with no stray spaces.',
     directFailed: 'The direct link did not come up. A strict router or a corporate network is the usual cause.',
     directLive: 'Connected directly',
+    orSelect: 'Or select the text above and press Cmd+C',
     saveFile: 'Save',
     lostLink: 'Connection lost. Same room — press Reconnect.',
 
