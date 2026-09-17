@@ -455,10 +455,19 @@ function createTray() {
 
 /* ------------------------------------------------------------------ */
 app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+
+/**
+ * Браузерный движок прячет домашний адрес компьютера за случайным именем ради
+ * приватности. Между Mac и Windows в одной домашней сети это имя часто не
+ * разрешается — и соседи по роутеру не находят друг друга. Отключаем маскировку:
+ * трафик всё равно не выходит за пределы квартиры.
+ */
+const off = ['WebRtcHideLocalIpsWithMdns']
 // macOS < 14.4: новый CoreAudio Tap ломает захват звука без отката на старые права
 if (process.platform === 'darwin' && Number(process.getSystemVersion().split('.')[0]) < 15) {
-  app.commandLine.appendSwitch('disable-features', 'MacCatapLoopbackAudioForScreenShare')
+  off.push('MacCatapLoopbackAudioForScreenShare')
 }
+app.commandLine.appendSwitch('disable-features', off.join(','))
 if (!app.requestSingleInstanceLock()) app.quit()
 app.on('second-instance', () => win?.show())
 

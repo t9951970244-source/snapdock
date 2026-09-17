@@ -129,15 +129,49 @@ export function useDirect() {
     key.current = await deriveKey(password, 'direct')
     const p = new RTCPeerConnection({ iceServers: STUN })
     pc.current = p
+    /**
+     * «disconnected» — обычно временная потеря пакетов, связь сама возвращается
+     * за несколько секунд. Рвать её сразу нельзя: именно поэтому соединение
+     * пропадало через минуту после успешного подключения.
+     */
+    let limp: ReturnType<typeof setTimeout> | null = null
     p.onconnectionstatechange = () => {
-      if (p.connectionState === 'failed' || p.connectionState === 'disconnected') {
-        setPhase('failed'); setError(t('directFailed'))
+      const st = p.connectionState
+      if (st === 'connected') {
+        if (limp) { clearTimeout(limp); limp = null }
+        setError(null)
+        return
+      }
+      if (st === 'disconnected') {
+        if (!limp) limp = setTimeout(() => {
+          if (p.connectionState !== 'connected') { setPhase('failed'); setError(t('directFailed')) }
+        }, 12000)
+        return
+      }
+      if (st === 'failed') {
+        if (limp) { clearTimeout(limp); limp = null }
+        setPhase('failed'); setError(`${t('directFailed')} (${p.iceConnectionState})`)
       }
     }
     p.ontrack = (e) => setRemote(e.streams[0])
     try {
       local.current = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: true })
       local.current.getTracks().forEach((tr) => p.addTrack(tr, local.current!))
+
+      // Mac и Windows по-разному жмут видео железом, и картинка приходит зелёной.
+      // Просим общий для всех VP8 — он декодируется одинаково везде.
+      const caps = RTCRtpSender.getCapabilities?.('video')
+      if (caps) {
+        const vp8 = caps.codecs.filter((c) => /VP8/i.test(c.mimeType))
+        const rest = caps.codecs.filter((c) => !/VP8/i.test(c.mimeType))
+        if (vp8.length) {
+          for (const tr of p.getTransceivers()) {
+            if (tr.sender.track?.kind === 'video' && tr.setCodecPreferences) {
+              try { tr.setCodecPreferences([...vp8, ...rest]) } catch { /* движок не дал */ }
+            }
+          }
+        }
+      }
     } catch { /* без камеры — только чат и файлы */ }
     return p
   }, [])
