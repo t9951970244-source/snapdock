@@ -37,6 +37,17 @@ function Chat() {
   const [inBox, setInBox] = useState('')
   const [copied, setCopied] = useState<'' | 'code' | 'pass' | 'invite'>('')
   const inviteBox = useRef<HTMLTextAreaElement>(null)
+  const [fromClip, setFromClip] = useState(false)
+
+  /** Одна кнопка на оба случая: приглашение это или ответ, решает сам виджет. */
+  const smart = async () => {
+    const txt = inBox.trim()
+    if (!txt || !pw.trim()) return
+    const kind = await d.inspect(txt)
+    if (kind === 'offer') return d.acceptOffer(pw, txt)
+    if (kind === 'answer') return d.acceptAnswer(txt)
+    window.alert(t('badCode'))
+  }
 
   /** Три пути подряд: системный буфер, браузерный, выделение в поле. */
   const copyAny = async (text: string, mark: 'code' | 'pass' | 'invite') => {
@@ -68,6 +79,22 @@ function Chat() {
     return window.snap?.onLang(setLang)
   }, [])
   useEffect(() => { feed.current?.scrollTo({ top: 1e6, behavior: 'smooth' }) }, [p.chat.length])
+
+  /* Пока открыт прямой режим — сами замечаем код в буфере и подставляем его. */
+  useEffect(() => {
+    if (mode !== 'direct' || d.phase === 'live' || d.phase === 'connecting') return
+    const id = setInterval(async () => {
+      const raw = (await window.snap?.readText()) ?? ''
+      const clean = raw.replace(/\s+/g, '')
+      if (clean.length < 200) return
+      if (clean === d.code.replace(/\s+/g, '')) return      // это наш собственный код
+      if (clean === inBox.replace(/\s+/g, '')) return       // уже подставлен
+      setInBox(clean)
+      setFromClip(true)
+      setTimeout(() => setFromClip(false), 4000)
+    }, 1200)
+    return () => clearInterval(id)
+  }, [mode, d.phase, d.code, inBox])
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape') window.snap?.closeChat() }
     window.addEventListener('keydown', k)
@@ -151,71 +178,63 @@ function Chat() {
                  className="h-10 w-[320px] rounded-[12px] px-3 text-[12.5px] outline-none"
                  style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
 
-          {d.phase === 'idle' && (
-            <>
-              <button onClick={() => pw.trim() && d.createOffer(pw)} disabled={!pw.trim()}
-                      className="h-10 w-[320px] rounded-[12px] text-[13px] font-semibold disabled:opacity-40"
-                      style={{ background: 'rgb(var(--accent) / 0.22)' }}>
-                {t('makeInvite')}
-              </button>
-              <div className="flex w-[320px] flex-col gap-2">
-                <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
-                          placeholder={t('pasteInvite')} rows={3}
-                          className="selectable w-full resize-none rounded-[12px] p-3 text-[11px] outline-none"
-                          style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
-                <div className="flex gap-2">
-                  <button onClick={() => pasteInto(setInBox)}
-                          className="h-10 flex-1 rounded-[12px] text-[12.5px] font-medium"
-                          style={{ background: 'rgb(var(--fill))' }}>
-                    {t('pasteBtn')}
-                  </button>
-                  <button onClick={() => pw.trim() && inBox.trim() && d.acceptOffer(pw, inBox)}
-                          disabled={!pw.trim() || !inBox.trim()}
-                          className="h-10 flex-1 rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
-                          style={{ background: 'rgb(var(--accent) / 0.22)' }}>
-                    {t('accept')}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          {/* Одно поле на оба случая: виджет сам понимает, что ему дали */}
+          {d.phase !== 'connecting' && (
+            <div className="flex w-[380px] flex-col gap-2">
+              {d.phase === 'idle' && (
+                <button onClick={() => pw.trim() && d.createOffer(pw)} disabled={!pw.trim()}
+                        className="h-10 rounded-[12px] text-[13px] font-semibold disabled:opacity-40"
+                        style={{ background: 'rgb(var(--accent) / 0.22)' }}>
+                  {t('makeInvite')}
+                </button>
+              )}
 
-          {(d.phase === 'madeOffer' || d.phase === 'madeAnswer') && (
-            <div className="flex w-[420px] flex-col gap-2">
-              <p className="text-[12px]" style={{ color: 'rgb(var(--ink))' }}>
-                {d.phase === 'madeOffer' ? t('inviteReady') : t('answerReady')}
-              </p>
-              <textarea ref={inviteBox} readOnly value={d.code} rows={4}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onClick={(e) => e.currentTarget.select()}
-                        className="selectable resize-none rounded-[12px] p-3 text-[10px] outline-none"
-                        style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink-2))' }} />
-              <button onClick={() => copyAny(d.code, 'invite')}
-                      className="h-9 rounded-[11px] text-[12px] font-medium"
-                      style={{ background: copied === 'invite' ? 'rgb(48 209 88 / 0.28)' : 'rgb(var(--accent) / 0.22)' }}>
-                {copied === 'invite' ? `${t('done')} ✓` : t('copyCode')}
-              </button>
-              <p className="text-[10.5px]" style={{ color: 'rgb(var(--ink-3))' }}>
-                {t('orSelect')} · {d.code.length} {t('chars')}
-              </p>
-              {d.phase === 'madeOffer' && (
+              {(d.phase === 'madeOffer' || d.phase === 'madeAnswer') && (
                 <>
+                  <p className="text-[12px]" style={{ color: 'rgb(var(--ink))' }}>
+                    {d.phase === 'madeOffer' ? t('inviteReady') : t('answerReady')}
+                  </p>
+                  <textarea ref={inviteBox} readOnly value={d.code} rows={3}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onClick={(e) => e.currentTarget.select()}
+                            className="selectable resize-none rounded-[12px] p-3 text-[10px] outline-none"
+                            style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink-2))' }} />
+                  <button onClick={() => copyAny(d.code, 'invite')}
+                          className="h-10 rounded-[12px] text-[12.5px] font-semibold"
+                          style={{ background: copied === 'invite' ? 'rgb(48 209 88 / 0.3)' : 'rgb(var(--accent) / 0.22)' }}>
+                    {copied === 'invite' ? `${t('done')} ✓` : `${t('copyCode')} · ${d.code.length}`}
+                  </button>
+                </>
+              )}
+
+              {d.phase !== 'madeAnswer' && (
+                <>
+                  <div className="mt-1 h-px" style={{ background: 'rgb(var(--ink-3) / 0.4)' }} />
+                  <p className="text-[12px]" style={{ color: 'rgb(var(--ink))' }}>
+                    {d.phase === 'idle' ? t('gotInvite') : t('gotAnswer')}
+                  </p>
                   <textarea value={inBox} onChange={(e) => setInBox(e.target.value)}
-                            placeholder={t('pasteAnswer')} rows={3}
-                            className="selectable mt-1 resize-none rounded-[12px] p-3 text-[11px] outline-none"
-                            style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+                            placeholder={t('pasteHere')} rows={3}
+                            className="selectable resize-none rounded-[12px] p-3 text-[11px] outline-none"
+                            style={{
+                              background: fromClip ? 'rgb(48 209 88 / 0.16)' : 'rgb(var(--fill))',
+                              color: 'rgb(var(--ink))',
+                            }} />
                   <div className="flex gap-2">
                     <button onClick={() => pasteInto(setInBox)}
                             className="h-10 flex-1 rounded-[12px] text-[12.5px] font-medium"
                             style={{ background: 'rgb(var(--fill))' }}>
                       {t('pasteBtn')}
                     </button>
-                    <button onClick={() => inBox.trim() && d.acceptAnswer(inBox)} disabled={!inBox.trim()}
-                            className="h-10 flex-1 rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
+                    <button onClick={smart} disabled={!pw.trim() || !inBox.trim()}
+                            className="h-10 flex-[2] rounded-[12px] text-[12.5px] font-semibold disabled:opacity-40"
                             style={{ background: 'rgb(var(--accent) / 0.22)' }}>
                       {t('connectNow')}
                     </button>
                   </div>
+                  {fromClip && (
+                    <p className="text-[11px]" style={{ color: 'rgb(48 209 88)' }}>{t('clipFound')}</p>
+                  )}
                 </>
               )}
             </div>

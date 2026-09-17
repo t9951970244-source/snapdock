@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { startMediaWatcher, mediaCommand, seekTo } from './media'
-import { listSessions, setSessionVolume, setSessionMute, setMasterVolume, getMasterVolume } from './mixer'
+import { listSessions, setSessionVolume, setSessionMute, setMasterVolume, getMasterVolume, setAutoDuck, setMasterMute } from './mixer'
 
 const DEV = !!process.env.VITE_DEV_SERVER_URL
 const DOCK_W = 380
@@ -141,15 +141,20 @@ function watchCursor() {
   }, 90)
 }
 
-ipcMain.handle('dock:snapToEdge', () => {
+/**
+ * Отпустили — оставляем ровно там, куда принесли.
+ * Прилипания к краю больше нет: следим только за тем, чтобы виджет
+ * не уехал за границу экрана целиком и его можно было поймать обратно.
+ */
+ipcMain.handle('dock:settle', () => {
   if (!win) return null
   const b = win.getBounds()
-  const d = screen.getDisplayNearestPoint({ x: b.x + DOCK_W / 2, y: b.y + 40 }).workArea
-  const left = b.x - d.x < d.width / 2
-  const nx = left ? d.x + 24 : d.x + d.width - DOCK_W - 24
-  const ny = Math.max(d.y + 8, Math.min(b.y, d.y + d.height - b.height - 8))
-  win.setPosition(nx, ny, true)
-  return left ? 'left' : 'right'
+  const d = screen.getDisplayNearestPoint({ x: b.x + b.width / 2, y: b.y + 40 }).workArea
+  const keep = 80                                   // столько всегда остаётся на виду
+  const x = Math.max(d.x - b.width + keep, Math.min(b.x, d.x + d.width - keep))
+  const y = Math.max(d.y, Math.min(b.y, d.y + d.height - 40))
+  if (x !== b.x || y !== b.y) win.setPosition(Math.round(x), Math.round(y), true)
+  return null
 })
 
 /* ------------------------------------------------------------------ */
@@ -308,6 +313,7 @@ ipcMain.on('chat:open', () => {
 ipcMain.on('chat:close', () => chat?.close())
 
 ipcMain.handle('clip:text', (_e, text: string) => { clipboard.writeText(text); return true })
+ipcMain.handle('clip:read', () => clipboard.readText())
 
 ipcMain.handle('shot:copy', (_e, dataUrl: string) => {
   clipboard.writeImage(nativeImage.createFromDataURL(dataUrl))
@@ -355,8 +361,15 @@ function installLoopbackHandler() {
 }
 
 ipcMain.handle('audio:sessions', () => listSessions())
+ipcMain.handle('audio:autoDuck', (_e, on: boolean) => { setAutoDuck(on); return on })
+ipcMain.handle('audio:solo', async (_e, keepId: string) => {
+  const list = await listSessions()
+  for (const s of list) await setSessionVolume(s.id, s.id === keepId ? Math.max(s.volume, 0.8) : 0.1)
+  return true
+})
 ipcMain.handle('audio:setVolume', (_e, id: string, v: number) => setSessionVolume(id, v))
 ipcMain.handle('audio:setMute', (_e, id: string, m: boolean) => setSessionMute(id, m))
+ipcMain.handle('audio:mute', (_e, m: boolean) => setMasterMute(m))
 ipcMain.handle('audio:master', (_e, v?: number) =>
   typeof v === 'number' ? setMasterVolume(v) : getMasterVolume())
 
@@ -434,6 +447,20 @@ app.whenReady().then(() => {
   }
 
   lang = app.getLocale().toLowerCase().startsWith('ru') ? 'ru' : 'en'
+
+  // Программа без значка в доке не получает от macOS стандартных сочетаний.
+  // Меню правки возвращает Cmd+C, Cmd+V, Cmd+A и Cmd+X во все поля ввода.
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: 'SnapDock', submenu: [{ role: 'quit' }] },
+    {
+      label: lang === 'ru' ? 'Правка' : 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+  ]))
   installLoopbackHandler()
   createDock()
   createTray()
@@ -445,7 +472,10 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-app.on('will-quit', () => globalShortcut.unregisterAll())
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+  import('./win-audio').then((m) => m.winStop()).catch(() => {})
+})
 process.on('uncaughtException', (err) => {
   if (DEV) dialog.showErrorBox('SnapDock', String(err?.stack ?? err))
   else console.error(err)

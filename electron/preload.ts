@@ -5,7 +5,7 @@ const api = {
   reportHeight: (h: number) => ipcRenderer.send('dock:height', h),
   dragStart: () => ipcRenderer.send('dock:dragStart'),
   dragEnd: () => ipcRenderer.send('dock:dragEnd'),
-  snapToEdge: () => ipcRenderer.invoke('dock:snapToEdge') as Promise<'left' | 'right'>,
+  settle: () => ipcRenderer.invoke('dock:settle'),
   quit: () => ipcRenderer.send('app:quit'),
 
   /* снимки */
@@ -13,6 +13,7 @@ const api = {
   shotFullscreen: () => ipcRenderer.invoke('shot:fullscreen'),
   copyShot: (d: string) => ipcRenderer.invoke('shot:copy', d),
   copyText: (t: string) => ipcRenderer.invoke('clip:text', t),
+  readText: () => ipcRenderer.invoke('clip:read') as Promise<string>,
   shotPermission: () => ipcRenderer.invoke('shot:permission') as Promise<string>,
   openScreenSettings: () => ipcRenderer.send('shot:openSettings'),
   saveShot: (d: string) => ipcRenderer.invoke('shot:save', d) as Promise<string>,
@@ -23,7 +24,10 @@ const api = {
   sessions: () => ipcRenderer.invoke('audio:sessions'),
   setSessionVolume: (id: string, v: number) => ipcRenderer.invoke('audio:setVolume', id, v),
   setSessionMute: (id: string, m: boolean) => ipcRenderer.invoke('audio:setMute', id, m),
+  autoDuck: (on: boolean) => ipcRenderer.invoke('audio:autoDuck', on),
+  solo: (id: string) => ipcRenderer.invoke('audio:solo', id),
   master: (v?: number) => ipcRenderer.invoke('audio:master', v) as Promise<number>,
+  masterMute: (m: boolean) => ipcRenderer.invoke('audio:mute', m),
   mediaCommand: (c: 'play' | 'pause' | 'toggle' | 'next' | 'prev') => ipcRenderer.invoke('media:command', c),
   mediaSeek: (sec: number) => ipcRenderer.invoke('media:seek', sec),
   onMedia: (cb: (s: unknown) => void) => {

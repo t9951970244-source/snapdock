@@ -41,6 +41,10 @@ const dict = {
     mute: 'Выключить звук',
     unmute: 'Включить звук',
     noApps: 'Пока ни одно приложение не выводит звук.\nВключите музыку или видео — строка появится сама.',
+    autoDuck: 'Приглушать музыку во время созвона',
+    solo: 'Только эта программа',
+    browserHint: 'Браузера нет в списке? Включите один раз: Chrome — Вид, Для разработчиков, Разрешить JavaScript из Apple Events.',
+    macNoMixer: 'Здесь появятся Spotify, Музыка и VLC — ими виджет управляет напрямую.\nОстальные программы macOS наружу громкость не отдаёт: для них только общая громкость выше.',
 
     /* сообщения */
     copied: 'Скопировано в буфер',
@@ -105,6 +109,10 @@ const dict = {
     wrongHalf: 'Это не тот код. В верхнее поле идёт код приглашения, в нижнее — ответный.',
     connecting: 'Устанавливаю связь…',
     chars: 'символов',
+    gotInvite: 'Получили код от собеседника? Вставьте сюда.',
+    gotAnswer: 'Получили ответный код? Вставьте сюда.',
+    pasteHere: 'Код появится здесь сам, как только скопируете его',
+    clipFound: 'Код из буфера подставлен — нажмите «Соединить»',
     saveFile: 'Сохранить',
     lostLink: 'Связь потеряна. Комната та же, нажмите «Переподключить».',
 
@@ -154,6 +162,10 @@ const dict = {
     mute: 'Mute',
     unmute: 'Unmute',
     noApps: 'No app is playing anything yet.\nStart some music or a video and it will show up here.',
+    autoDuck: 'Duck music during calls',
+    solo: 'This app only',
+    browserHint: 'Browser missing from the list? Enable it once: Chrome — View, Developer, Allow JavaScript from Apple Events.',
+    macNoMixer: 'Spotify, Music and VLC will show up here — the widget drives them directly.\nmacOS exposes no volume for other apps, so only the master above applies to them.',
 
     copied: 'Copied to clipboard',
     saved: 'Saved to Pictures / SnapDock',
@@ -216,6 +228,10 @@ const dict = {
     wrongHalf: 'Wrong code. The invitation goes in the top box, the reply in the bottom one.',
     connecting: 'Establishing the link…',
     chars: 'characters',
+    gotInvite: 'Got a code from the other person? Paste it here.',
+    gotAnswer: 'Got the reply code? Paste it here.',
+    pasteHere: 'The code appears here by itself once you copy it',
+    clipFound: 'Code picked up from the clipboard — press Connect',
     saveFile: 'Save',
     lostLink: 'Connection lost. Same room — press Reconnect.',
 

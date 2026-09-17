@@ -193,6 +193,13 @@ export function useDirect() {
     }
   }, [])
 
+  /** Что за код нам дали: приглашение, ответ или мусор. */
+  const inspect = useCallback(async (raw: string) => {
+    const o = await unpack<{ sdp: string; type: string }>(raw)
+    if (!o?.sdp) return null
+    return o.type === 'offer' ? 'offer' as const : o.type === 'answer' ? 'answer' as const : null
+  }, [])
+
   const hangUp = useCallback(() => {
     dc.current?.close(); dc.current = null
     local.current?.getTracks().forEach((tr) => tr.stop()); local.current = null
@@ -228,6 +235,6 @@ export function useDirect() {
 
   return {
     phase, code, chat, remote, error, localStream: local,
-    createOffer, acceptOffer, acceptAnswer, hangUp, send, sendFile, label: bytes,
+    createOffer, acceptOffer, acceptAnswer, inspect, hangUp, send, sendFile, label: bytes,
   }
 }

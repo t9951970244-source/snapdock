@@ -36,7 +36,7 @@ export function useMixer(open: boolean) {
   const toggleMasterMute = () => {
     const next = !masterMuted
     setMasterMuted(next)
-    window.snap?.master(next ? 0 : master || 0.5)
+    window.snap?.masterMute(next)          // настоящий выключатель, громкость не теряется
   }
 
   return { sessions, master, masterMuted, setVolume, setMute, setMasterVolume, toggleMasterMute, refresh }

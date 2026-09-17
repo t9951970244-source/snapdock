@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { app } from 'electron'
 import { createRequire } from 'node:module'
+import { winNowPlaying, winMediaCommand } from './win-audio'
 
 // Загружаем необязательный нативный модуль в рантайме.
 // Прямой require() Rollup пытается разрешить на этапе сборки и падает.
@@ -48,6 +49,9 @@ function helper(name: string) {
  * Если ни того ни другого нет — остаётся loopback-звук и EQ, транспорт выключен.
  */
 async function readWindows(): Promise<MediaState | null> {
+  const ps = await winNowPlaying()          // свой процесс, ничего ставить не нужно
+  if (ps?.title) return normalize(ps)
+
   const exe = helper('smtc.exe')
   if (exe) {
     try {
@@ -85,6 +89,7 @@ async function readWindows(): Promise<MediaState | null> {
 }
 let winSession: any = null
 export async function winCommand(cmd: string) {
+  if (await winMediaCommand(cmd)) return
   const exe = helper('smtc.exe')
   if (exe) { await run(exe, ['--cmd', cmd], { windowsHide: true }).catch(() => {}); return }
   try {
@@ -202,7 +207,14 @@ export async function mediaCommand(cmd: 'play' | 'pause' | 'toggle' | 'next' | '
     return run('playerctl', [map[cmd]]).then(() => {}).catch(() => {})
   }
   const map = { play: 'play', pause: 'pause', toggle: 'playpause', next: 'next track', prev: 'previous track' }
-  return run('osascript', ['-e', `tell application "Spotify" to ${map[cmd]}`]).then(() => {}).catch(() => {})
+  try {
+    if (await run('osascript', ['-e', 'application "Spotify" is running']).then((r) => r.stdout.trim() === 'true')) {
+      await run('osascript', ['-e', `tell application "Spotify" to ${map[cmd]}`])
+      return
+    }
+  } catch { /* дальше пробуем браузер */ }
+  const { macBrowserCommand } = await import('./mixer')
+  await macBrowserCommand(cmd).catch(() => false)
 }
 
 export async function seekTo(sec: number) {
