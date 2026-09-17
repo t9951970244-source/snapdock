@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { systemAudioTrack } from '@/lib/system-audio'
 
 export type Bands = { levels: Float32Array; peaks: Float32Array; rms: number }
 
@@ -26,13 +27,10 @@ export function useAnalyser(bars = 32) {
 
     const start = async () => {
       try {
-        // Видео просим крошечное, но просим: без видеотрека Windows отдаёт тишину
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { width: 4, height: 4, frameRate: 1 } as MediaTrackConstraints,
-          audio: true,
-        })
-        stream.getVideoTracks().forEach((t) => t.stop())   // видео не нужно ни кадра
-        if (!stream.getAudioTracks().length) throw new Error('no loopback audio')
+        // Общий захват на всё приложение: иначе запись экрана остаётся без звука
+        const track = await systemAudioTrack()
+        if (!track) throw new Error('no loopback audio')
+        stream = new MediaStream([track])
         setSource('loopback')
       } catch {
         try {

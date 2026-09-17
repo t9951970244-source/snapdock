@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { systemAudioTrack } from '@/lib/system-audio'
 
 /**
  * Запись экрана.
@@ -30,6 +31,7 @@ export function useRecorder() {
   const [secs, setSecs] = useState(0)
   const [saved, setSaved] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [warn, setWarn] = useState<'' | 'sys' | 'mic' | 'none'>('')
 
   const rec = useRef<MediaRecorder | null>(null)
   const parts = useRef<Blob[]>([])
@@ -47,12 +49,13 @@ export function useRecorder() {
   }
 
   const start = useCallback(async (sound: Sound) => {
-    setError(null); setSaved(null)
+    setError(null); setSaved(null); setWarn('')
     try {
-      // Экран и системный звук — одним запросом, окно выбора не всплывает
+      // Картинку берём отдельно от звука: звук в приложении общий, второй
+      // захват система не даёт — из-за этого запись раньше выходила немой
       const screen = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 30 } as MediaTrackConstraints,
-        audio: sound !== 'none',
+        audio: false,
       })
       streams.current.push(screen)
 
@@ -60,26 +63,30 @@ export function useRecorder() {
       if (!video) throw new Error('нет картинки')
 
       let audio: MediaStreamTrack | null = null
-      const sysTracks = screen.getAudioTracks()
+      const sys = sound === 'none' ? null : await systemAudioTrack()
+      if (sound !== 'none' && !sys) setWarn('sys')      // звука компьютера нет — скажем прямо
 
       if (sound === 'both') {
-        // Системный звук и микрофон сводим в одну дорожку
         const mic = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: false, noiseSuppression: false },
         }).catch(() => null)
         if (mic) streams.current.push(mic)
+        else setWarn('mic')
 
-        if (sysTracks.length || mic) {
+        if (sys || mic) {
+          // Сводим системный звук и микрофон в одну дорожку
           const ac = new AudioContext()
           ctx.current = ac
           const dest = ac.createMediaStreamDestination()
-          if (sysTracks.length) ac.createMediaStreamSource(new MediaStream(sysTracks)).connect(dest)
+          if (sys) ac.createMediaStreamSource(new MediaStream([sys])).connect(dest)
           if (mic) ac.createMediaStreamSource(mic).connect(dest)
           audio = dest.stream.getAudioTracks()[0] ?? null
         }
       } else if (sound === 'system') {
-        audio = sysTracks[0] ?? null
+        audio = sys
       }
+
+      if (sound !== 'none' && !audio) setWarn('none')
 
       const mix = new MediaStream(audio ? [video, audio] : [video])
       const type = pickFormat()
@@ -119,5 +126,5 @@ export function useRecorder() {
 
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`
 
-  return { on, secs, clock, saved, error, start, stop }
+  return { on, secs, clock, saved, error, warn, start, stop }
 }

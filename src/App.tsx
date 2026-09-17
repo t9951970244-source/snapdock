@@ -102,6 +102,10 @@ export default function App() {
   /* Запись сохранилась или сорвалась — говорим об этом */
   useEffect(() => { if (recorder.saved) note(t('recSaved')) }, [recorder.saved])
   useEffect(() => { if (recorder.error) note(t('recFailed')) }, [recorder.error])
+  useEffect(() => {
+    if (recorder.warn === 'mic') note(t('recNoMic'))
+    else if (recorder.warn) note(t('recNoSys'))
+  }, [recorder.warn])
 
   useEffect(() => window.snap?.onHotkey((k) => {
     if (k === 'region') region()
