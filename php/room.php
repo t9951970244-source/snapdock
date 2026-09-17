@@ -78,11 +78,17 @@ sweep($dir);
 /* ---------------- вход в комнату ---------------- */
 if ($action === 'join') {
     $name = substr((string)($_GET['name'] ?? 'Гость'), 0, 40);
-    $id   = bin2hex(random_bytes(6));
+    // Постоянный знак участника: при повторном входе старая запись заменяется,
+    // а не добавляется рядом. Иначе после переподключения появлялись двойники.
+    $uid  = preg_replace('/[^a-z0-9]/i', '', (string)($_GET['uid'] ?? ''));
+    $id   = $uid !== '' ? substr($uid, 0, 24) : bin2hex(random_bytes(6));
     $out  = with_room($file, function (&$d) use ($id, $name) {
+        $fresh = !isset($d['peers'][$id]);
         $d['peers'][$id] = ['name' => $name, 'seen' => time()];
-        $d['seq']++;
-        $d['msgs'][] = ['n' => $d['seq'], 't' => 'joined', 'from' => $id, 'name' => $name];
+        if ($fresh) {
+            $d['seq']++;
+            $d['msgs'][] = ['n' => $d['seq'], 't' => 'joined', 'from' => $id, 'name' => $name];
+        }
         return ['id' => $id, 'since' => $d['seq'], 'peers' => $d['peers']];
     });
     echo json_encode($out, JSON_UNESCAPED_UNICODE);

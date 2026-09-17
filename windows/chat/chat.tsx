@@ -27,16 +27,25 @@ function Ctl({ children, onClick, title, on, danger }: {
 }
 
 /** Плитка участника. Своё видео зеркалим, чужое показываем как есть. */
-function Tile({ stream, name, me, volume = 1, talking, big, onBig }: {
+function Tile({ stream, name, me, volume = 1, talking, big, small, onBig, onBlocked }: {
   stream?: MediaStream | null; name: string; me?: boolean
-  volume?: number; talking?: boolean; big?: boolean; onBig?: () => void
+  volume?: number; talking?: boolean; big?: boolean; small?: boolean
+  onBig?: () => void; onBlocked?: () => void
 }) {
   const v = useRef<HTMLVideoElement>(null)
-  useEffect(() => { if (v.current && stream) v.current.srcObject = stream }, [stream])
+  useEffect(() => {
+    if (!v.current || !stream) return
+    v.current.srcObject = stream
+    // Браузер может молча отказать в звуке — тогда сообщаем наверх
+    v.current.play().catch(() => onBlocked?.())
+  }, [stream])
   useEffect(() => { if (v.current && !me) v.current.volume = volume }, [volume, me, stream])
   return (
     <div onDoubleClick={onBig}
-         className={`relative overflow-hidden rounded-[16px] ${big ? 'col-span-full row-span-2 aspect-video' : 'aspect-[4/3]'}`}
+         className={`relative shrink-0 overflow-hidden ${
+           small ? 'h-[70px] w-[70px] rounded-full'
+                 : big ? 'col-span-full row-span-2 aspect-video rounded-[16px]'
+                 : 'aspect-[4/3] rounded-[16px]'}`}
          style={{
            background: 'rgb(var(--fill))',
            boxShadow: talking
@@ -49,10 +58,12 @@ function Tile({ stream, name, me, volume = 1, talking, big, onBig }: {
                  className={`h-full w-full object-cover ${me ? 'scale-x-[-1]' : ''}`} />
         : <div className="grid h-full w-full place-items-center text-[22px] font-semibold"
                style={{ color: 'rgb(var(--ink-3))' }}>{(name || '?').slice(0, 2).toUpperCase()}</div>}
-      <span className="absolute bottom-2 left-2 rounded-[8px] px-2 py-0.5 text-[11px] font-medium text-white"
-            style={{ background: 'rgb(0 0 0 / 0.45)' }}>
-        {me ? t('you') : name}
-      </span>
+      {!small && (
+        <span className="absolute bottom-2 left-2 rounded-[8px] px-2 py-0.5 text-[11px] font-medium text-white"
+              style={{ background: 'rgb(0 0 0 / 0.45)' }}>
+          {me ? t('you') : name}
+        </span>
+      )}
     </div>
   )
 }
@@ -76,6 +87,8 @@ function Chat() {
   const [copied, setCopied] = useState(false)
   const [big, setBig] = useState<string | null>(null)
   const [devOpen, setDevOpen] = useState(false)
+  const [blocked, setBlocked] = useState(false)   // браузер не дал звук
+  const [small, setSmall] = useState(false)       // видео свёрнуто в полоску
   const [text, setText] = useState('')
   const [over, setOver] = useState(false)
   const [cfgOpen, setCfgOpen] = useState(false)
@@ -424,12 +437,23 @@ function Chat() {
                 {t('noCamera')}
               </button>
             )}
-            <div className="grid gap-2"
-                 style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${tiles.length > 3 ? 150 : 210}px, 1fr))` }}>
+            {blocked && (
+              <button onClick={() => {
+                        document.querySelectorAll('video').forEach((v) => { (v as HTMLVideoElement).play().catch(() => {}) })
+                        setBlocked(false)
+                      }}
+                      className="mb-2 h-9 w-full rounded-[11px] text-[12.5px] font-semibold"
+                      style={{ background: 'rgb(var(--accent) / 0.3)' }}>
+                🔊 {t('unmute')}
+              </button>
+            )}
+            <div className={small ? 'flex gap-2 overflow-x-auto' : 'grid gap-2'}
+                 style={small ? undefined : { gridTemplateColumns: `repeat(auto-fit, minmax(${tiles.length > 3 ? 150 : 210}px, 1fr))` }}>
               {tiles.map((x) => (
                 <Tile key={x.id} stream={x.stream} name={x.name} me={x.me}
                       volume={r.volume} talking={mode === 'server' && r.speaking.has(x.id)}
-                      big={big === x.id} onBig={() => setBig(big === x.id ? null : x.id)} />
+                      big={big === x.id} onBig={() => setBig(big === x.id ? null : x.id)}
+                      small={small} onBlocked={() => setBlocked(true)} />
               ))}
             </div>
 
@@ -444,6 +468,7 @@ function Chat() {
                   {r.camOn ? '📹' : '🚫'}
                 </Ctl>
                 <Ctl on={r.sharing} onClick={() => r.share()} title={t('share')}>🖥</Ctl>
+                <Ctl on={small} onClick={() => setSmall((v) => !v)} title={t('shrink')}>{small ? '⌃' : '⌄'}</Ctl>
 
                 <span className="mx-1 h-6 w-px" style={{ background: 'rgb(var(--ink-3) / 0.5)' }} />
 

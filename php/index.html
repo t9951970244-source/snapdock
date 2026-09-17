@@ -46,7 +46,11 @@ header b{font-size:15px;font-weight:600}
 .icon{width:36px;height:36px;border-radius:10px;background:var(--fill);display:grid;place-items:center;font-size:17px}
 
 #grid{display:grid;gap:8px;padding:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  flex:0 0 auto;max-height:46vh;overflow:auto}
+  flex:0 0 auto;max-height:46vh;overflow:auto;transition:max-height .3s var(--ios)}
+/* Свёрнутый вид: узкая полоса кружков, место отдаётся переписке */
+#grid.small{display:flex;gap:6px;max-height:84px;overflow-x:auto;padding:6px 8px}
+#grid.small .tile{width:68px;height:68px;aspect-ratio:auto;border-radius:50%;flex:0 0 auto}
+#grid.small .tile span{display:none}
 .tile{position:relative;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--fill)}
 .tile video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
 .tile.me video{transform:scaleX(-1)}
@@ -79,10 +83,12 @@ footer{display:flex;gap:8px;padding:10px;background:var(--card);border-top:1px s
 <div id="gate">
   <div class="box">
     <h1>SnapDock</h1>
-    <p>Введите название комнаты и своё имя. Кто введёт то же название — окажется рядом. Работает на компьютере и телефоне.</p>
-    <input class="field" id="gRoom" placeholder="Название комнаты" autocomplete="off">
+    <p>Введите номер комнаты и пароль — их присылает тот, кто комнату создал. Работает на телефоне и на компьютере, устанавливать ничего не нужно.</p>
+    <input class="field" id="gRoom" placeholder="Номер комнаты" inputmode="numeric" autocomplete="off">
+    <input class="field" id="gPass" placeholder="Пароль комнаты" autocomplete="off">
     <input class="field" id="gName" placeholder="Ваше имя" autocomplete="off">
     <button class="go" id="gGo">Войти</button>
+    <button id="gNew" style="background:none;color:var(--ink-2);font-size:13px;text-decoration:underline">Создать новую комнату</button>
     <p id="gErr" style="color:var(--bad)"></p>
   </div>
 </div>
@@ -92,6 +98,8 @@ footer{display:flex;gap:8px;padding:10px;background:var(--card);border-top:1px s
     <span class="dot" id="dot"></span>
     <b id="hRoom">—</b>
     <span class="who" id="hWho">—</span>
+    <button class="icon" id="bSmall" title="Свернуть видео">⌄</button>
+    <button class="icon" id="bPip" title="Поверх всех окон">⧉</button>
     <button class="icon" id="bCam" title="Камера">📹</button>
     <button class="icon" id="bMic" title="Микрофон">🎙</button>
     <button class="icon" id="bOut" title="Выйти">✕</button>
@@ -108,6 +116,12 @@ footer{display:flex;gap:8px;padding:10px;background:var(--card);border-top:1px s
   </footer>
 </div>
 
+<button id="unmute" style="display:none;position:fixed;left:50%;bottom:74px;transform:translateX(-50%);
+  z-index:30;height:44px;padding:0 20px;border-radius:22px;background:var(--accent);color:#fff;
+  font-size:15px;font-weight:600;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,.25)">
+  🔊 Включить звук
+</button>
+
 <div id="drop">Отпустите — отправим всем</div>
 
 <script>
@@ -115,7 +129,18 @@ footer{display:flex;gap:8px;padding:10px;background:var(--card);border-top:1px s
 const $ = (s) => document.querySelector(s);
 const CHUNK = 16 * 1024;
 
-let ws = null, me = '', myName = '', room = '';
+let ws = null, me = '', myName = '', room = '', roomNum = '', roomPass = '';
+
+/**
+ * Метка комнаты = отпечаток от номера и пароля вместе.
+ * Считается точно так же, как в виджете, иначе телефон и компьютер
+ * оказались бы в разных комнатах и не увидели друг друга.
+ */
+async function roomKey(num, pass) {
+  const data = new TextEncoder().encode(`snapdock|${String(num).trim()}|${String(pass).trim()}`);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
 let local = null, camOn = true, micOn = true;
 const pcs = new Map();      // id -> RTCPeerConnection
 const tiles = new Map();    // id -> элемент плитки
@@ -129,31 +154,67 @@ fetch('ice.json').then(r => r.json()).then(j => { if (Array.isArray(j) && j.leng
 /* ───────── вход ───────── */
 const saved = JSON.parse(localStorage.getItem('snapdock') || '{}');
 $('#gName').value = saved.name || '';
-$('#gRoom').value = decodeURIComponent(location.pathname.slice(1)) || saved.room || '';
-$('#gGo').onclick = enter;
-$('#gRoom').onkeydown = $('#gName').onkeydown = (e) => { if (e.key === 'Enter') enter(); };
+$('#gRoom').value = saved.num || '';
+$('#gPass').value = saved.pass || '';
 
-function enter() {
-  room = $('#gRoom').value.trim();
+/* Приглашение можно открыть ссылкой: ...#482915-k3mpq7x */
+const link = location.hash.slice(1).split('-');
+if (link.length === 2) { $('#gRoom').value = link[0]; $('#gPass').value = link[1]; }
+
+$('#gGo').onclick = enter;
+$('#gNew').onclick = () => {
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const r = crypto.getRandomValues(new Uint8Array(8));
+  $('#gRoom').value = String(crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000);
+  $('#gPass').value = Array.from(r, v => abc[v % abc.length]).join('').replace(/(.{4})/, '$1-');
+  $('#gErr').textContent = 'Отправьте номер и пароль тем, кого зовёте';
+};
+for (const id of ['#gRoom', '#gPass', '#gName'])
+  $(id).onkeydown = (e) => { if (e.key === 'Enter') enter(); };
+
+async function enter() {
+  roomNum = $('#gRoom').value.trim();
+  roomPass = $('#gPass').value.trim();
   myName = $('#gName').value.trim() || 'Гость';
-  if (!room) { $('#gErr').textContent = 'Введите название комнаты'; return; }
-  localStorage.setItem('snapdock', JSON.stringify({ room, name: myName }));
-  history.replaceState(null, '', '/' + encodeURIComponent(room));
+  if (!roomNum || !roomPass) { $('#gErr').textContent = 'Нужны номер комнаты и пароль'; return; }
+  room = await roomKey(roomNum, roomPass);
+  localStorage.setItem('snapdock', JSON.stringify({ num: roomNum, pass: roomPass, name: myName }));
   $('#gate').style.display = 'none';
   $('#room').style.display = 'flex';
-  $('#hRoom').textContent = room;
+  $('#hRoom').textContent = roomNum;
   startMedia().finally(connect);
 }
 
 /* ───────── камера ───────── */
 async function startMedia() {
+  /* Просим камеру и микрофон по отдельности: раньше отказ в одном
+     убивал и второе, и человек оставался вообще без звука. */
+  const tracks = [];
   try {
-    local = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, facingMode: 'user' },
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
-  } catch { local = null; note('Камера недоступна — вас не видно, но остальных видно'); }
+    const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+    tracks.push(...cam.getVideoTracks());
+  } catch { note('Камера недоступна — вас не видно, но остальных видно'); }
+  try {
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    tracks.push(...mic.getAudioTracks());
+  } catch { note('Микрофон недоступен — вас не слышно'); }
+  local = tracks.length ? new MediaStream(tracks) : null;
   showTile('me', myName, local, true);
+}
+
+/* Браузеры запрещают звук, пока человек не коснулся страницы. Отказ приходит
+   молча — поэтому ловим его и показываем кнопку. */
+let audioBlocked = false;
+function playSafe(v) {
+  v.play().catch(() => {
+    audioBlocked = true;
+    $('#unmute').style.display = 'flex';
+  });
+}
+function unmuteAll() {
+  audioBlocked = false;
+  $('#unmute').style.display = 'none';
+  document.querySelectorAll('#grid video').forEach((v) => { v.muted = v.dataset.me === '1'; v.play().catch(() => {}); });
 }
 
 function showTile(id, name, stream, mine) {
@@ -168,8 +229,11 @@ function showTile(id, name, stream, mine) {
   if (stream) {
     const v = document.createElement('video');
     v.autoplay = true; v.playsInline = true; v.muted = !!mine;
+    v.dataset.me = mine ? '1' : '0';
     v.srcObject = stream;
+    v.volume = 1;
     el.append(v);
+    playSafe(v);
   } else {
     el.classList.add('empty');
     el.append(document.createTextNode((name || '?').slice(0, 2).toUpperCase()));
@@ -186,6 +250,13 @@ function showTile(id, name, stream, mine) {
 const API = 'room.php';
 let since = 0, polling = false, alive = false;
 
+/* Постоянный знак этого устройства: переживает перезагрузку страницы */
+const UID = (() => {
+  let v = localStorage.getItem('snapdock-uid');
+  if (!v) { v = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, '0')).join(''); localStorage.setItem('snapdock-uid', v); }
+  return v;
+})();
+
 async function api(action, params = {}, body) {
   const q = new URLSearchParams({ a: action, room, ...params });
   const res = await fetch(`${API}?${q}`, body
@@ -199,7 +270,7 @@ function tell(obj) { if (me) api('send', { id: me }, obj).catch(() => {}); }
 async function connect() {
   alive = true;
   try {
-    const j = await api('join', { name: myName });
+    const j = await api('join', { name: myName, uid: UID });
     if (!j.id) throw new Error('join');
     me = j.id; since = j.since || 0;
     $('#dot').classList.add('on');
@@ -394,7 +465,25 @@ $('#bMic').onclick = () => {
   local?.getAudioTracks().forEach((t) => (t.enabled = micOn));
   $('#bMic').style.opacity = micOn ? 1 : .4;
 };
-$('#bOut').onclick = () => location.href = '/';
+$('#bOut').onclick = () => { alive = false; location.reload(); };
+$('#unmute').onclick = unmuteAll;
+
+/* Свернуть видео в полоску — переписке становится просторнее */
+$('#bSmall').onclick = () => {
+  const g = $('#grid');
+  g.classList.toggle('small');
+  $('#bSmall').textContent = g.classList.contains('small') ? '⌃' : '⌄';
+};
+
+/* Вынести собеседника поверх всех окон: видно, даже если свернуть браузер */
+$('#bPip').onclick = async () => {
+  const v = [...document.querySelectorAll('#grid video')].find((x) => x.dataset.me !== '1');
+  if (!v) { note('Пока некого показывать'); return; }
+  try {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture();
+    else await v.requestPictureInPicture();
+  } catch { note('Этот браузер так не умеет'); }
+};
 
 /* перетаскивание файлов */
 addEventListener('dragover', (e) => { e.preventDefault(); $('#drop').classList.add('on'); });
