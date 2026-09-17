@@ -48,15 +48,19 @@
         "to": "tray.png"
       },
       {
-        "from": "resources/",
-        "to": ".",
-        "filter": [
-          "*.exe"
-        ]
+        "from": "build/icon.png",
+        "to": "icon.png"
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
         {
           "target": "portable",
           "arch": [
@@ -66,7 +70,7 @@
       ]
     },
     "portable": {
-      "artifactName": "SnapDock.exe"
+      "artifactName": "SnapDock-Portable.exe"
     },
     "mac": {
       "target": [
@@ -87,13 +91,49 @@
       },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.icns",
+      "artifactName": "SnapDock-${arch}.dmg"
     },
     "linux": {
-      "target": "AppImage"
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Utility"
     },
     "dmg": {
-      "artifactName": "SnapDock-${arch}.dmg"
+      "artifactName": "SnapDock-${arch}.dmg",
+      "title": "SnapDock",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190,
+          "type": "file"
+        },
+        {
+          "x": 420,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 570,
+        "height": 380
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SnapDock",
+      "runAfterFinish": true,
+      "artifactName": "SnapDock-Setup-${version}.exe",
+      "uninstallDisplayName": "SnapDock",
+      "deleteAppDataOnUninstall": false
     }
   }
 }
