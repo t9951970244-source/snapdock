@@ -145,12 +145,20 @@ export function useDirect() {
   /** Первый участник: создаёт код приглашения. */
   const createOffer = useCallback(async (password: string) => {
     setError(null)
-    const p = await makePc(password)
-    bindChannel(p.createDataChannel('snapdock', { ordered: true }))
-    await p.setLocalDescription(await p.createOffer())
-    await gathered(p)
-    setCode(await pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'offer' }))
-    setPhase('madeOffer')
+    setPhase('connecting')                     // видно, что работа пошла
+    try {
+      const p = await makePc(password)
+      bindChannel(p.createDataChannel('snapdock', { ordered: true }))
+      await p.setLocalDescription(await p.createOffer())
+      await gathered(p)
+      const c = await pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'offer' })
+      setCode(c)
+      await window.snap?.copyText(c)           // сразу в буфер: копировать руками не нужно
+      setPhase('madeOffer')
+    } catch (err: any) {
+      setPhase('failed')
+      setError(`${t('directFailed')} ${String(err?.message ?? err)}`)
+    }
   }, [makePc, bindChannel])
 
   /** Второй участник: вставляет чужой код, получает свой ответный. */
@@ -165,7 +173,9 @@ export function useDirect() {
       await p.setRemoteDescription({ type: 'offer', sdp: o.sdp })
       await p.setLocalDescription(await p.createAnswer())
       await gathered(p)
-      setCode(await pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'answer' }))
+      const c = await pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'answer' })
+      setCode(c)
+      await window.snap?.copyText(c)           // ответный код тоже сразу в буфере
       setPhase('madeAnswer')
     } catch (err: any) {
       setPhase('failed')

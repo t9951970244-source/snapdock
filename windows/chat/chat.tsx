@@ -89,6 +89,9 @@ function Chat() {
       if (clean.length < 200) return
       if (clean === d.code.replace(/\s+/g, '')) return      // это наш собственный код
       if (clean === inBox.replace(/\s+/g, '')) return       // уже подставлен
+      // Подставляем, только если это действительно код SnapDock.
+      // Раньше сюда падал любой скопированный текст — и поле забивалось мусором.
+      if (!(await d.inspect(clean))) return
       setInBox(clean)
       setFromClip(true)
       setTimeout(() => setFromClip(false), 4000)
@@ -191,6 +194,9 @@ function Chat() {
 
               {(d.phase === 'madeOffer' || d.phase === 'madeAnswer') && (
                 <>
+                  <p className="text-[12px] font-medium" style={{ color: 'rgb(48 209 88)' }}>
+                    ✓ {t('autoCopied')}
+                  </p>
                   <p className="text-[12px]" style={{ color: 'rgb(var(--ink))' }}>
                     {d.phase === 'madeOffer' ? t('inviteReady') : t('answerReady')}
                   </p>

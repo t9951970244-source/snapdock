@@ -25,6 +25,32 @@ const M = {
   en: { show: 'Show widget', area: 'Capture area', screen: 'Capture screen', lang: 'Language', quit: 'Quit' },
 }
 
+const CTX = {
+  ru: { cut: 'Вырезать', copy: 'Копировать', paste: 'Вставить', all: 'Выделить всё', quit: 'Закрыть SnapDock' },
+  en: { cut: 'Cut', copy: 'Copy', paste: 'Paste', all: 'Select all', quit: 'Quit SnapDock' },
+}
+
+/**
+ * Меню по правой кнопке — как в любой другой программе.
+ * Команды зовём напрямую у окна, а не ролями меню: у программы без значка
+ * в доке роли могут не срабатывать, а прямые вызовы работают всегда.
+ */
+function attachContextMenu(w: BrowserWindow, withQuit = false) {
+  w.webContents.on('context-menu', (_e, p) => {
+    const m = CTX[lang]
+    const wc = w.webContents
+    const items: Electron.MenuItemConstructorOptions[] = [
+      { label: m.cut, enabled: p.isEditable && !!p.selectionText, click: () => wc.cut() },
+      { label: m.copy, enabled: !!p.selectionText, click: () => wc.copy() },
+      { label: m.paste, enabled: p.isEditable, click: () => wc.paste() },
+      { type: 'separator' },
+      { label: m.all, enabled: p.isEditable || !!p.selectionText, click: () => wc.selectAll() },
+    ]
+    if (withQuit) items.push({ type: 'separator' }, { label: m.quit, click: () => app.quit() })
+    Menu.buildFromTemplate(items).popup({ window: w })
+  })
+}
+
 function broadcastLang() {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('lang', lang)
   createTray()   // подписи в трее тоже меняются
@@ -86,6 +112,7 @@ function createDock() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   win.setIgnoreMouseEvents(true, { forward: true }) // клики проходят насквозь, пока мышь не над стеклом
 
+  attachContextMenu(win, true)
   load(win, 'index')
   win.on('closed', () => { win = null })
   return win
@@ -283,6 +310,7 @@ function openEditor(dataUrl: string) {
     show: false,
     webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
   })
+  attachContextMenu(editor)
   load(editor, 'editor').then(() => {
     editor!.webContents.send('editor:image', dataUrl)
     editor!.show()
@@ -307,6 +335,7 @@ ipcMain.on('chat:open', () => {
     resizable: true, show: false,
     webPreferences: { preload: join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false },
   })
+  attachContextMenu(chat)
   load(chat, 'chat').then(() => chat!.show())
   chat.on('closed', () => { chat = null })
 })
