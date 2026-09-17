@@ -69,6 +69,8 @@ export function useDirect() {
   const [code, setCode] = useState('')            // код для передачи собеседнику
   const [chat, setChat] = useState<ChatItem[]>([])
   const [remote, setRemote] = useState<MediaStream | null>(null)
+  const [mine, setMine] = useState<MediaStream | null>(null)
+  const [noCam, setNoCam] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const pc = useRef<RTCPeerConnection | null>(null)
@@ -126,6 +128,7 @@ export function useDirect() {
   }, [handle])
 
   const makePc = useCallback(async (password: string) => {
+    await window.snap?.askCamera()      // на macOS окно разрешения иначе не всплывает
     key.current = await deriveKey(password, 'direct')
     const p = new RTCPeerConnection({ iceServers: STUN })
     pc.current = p
@@ -157,6 +160,8 @@ export function useDirect() {
     try {
       local.current = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: true })
       local.current.getTracks().forEach((tr) => p.addTrack(tr, local.current!))
+      setMine(local.current)
+      setNoCam(false)
 
       // Mac и Windows по-разному жмут видео железом, и картинка приходит зелёной.
       // Просим общий для всех VP8 — он декодируется одинаково везде.
@@ -172,7 +177,18 @@ export function useDirect() {
           }
         }
       }
-    } catch { /* без камеры — только чат и файлы */ }
+    } catch {
+      /**
+       * Камера не дала доступ. Раньше в этом случае виджет оставался вообще без
+       * видеодорожек — и тогда собеседника тоже не было видно, хотя он снимал.
+       * Просим дорожки «только на приём»: своей картинки нет, чужая приходит.
+       */
+      setNoCam(true)
+      try {
+        p.addTransceiver('video', { direction: 'recvonly' })
+        p.addTransceiver('audio', { direction: 'recvonly' })
+      } catch { /* движок не дал — остаются чат и файлы */ }
+    }
     return p
   }, [])
 
@@ -181,6 +197,9 @@ export function useDirect() {
     setError(null)
     setPhase('connecting')                     // видно, что работа пошла
     try {
+      // Предыдущая попытка должна быть закрыта, иначе ответы перепутаются
+      dc.current?.close(); dc.current = null
+      pc.current?.close(); pc.current = null
       const p = await makePc(password)
       bindChannel(p.createDataChannel('snapdock', { ordered: true }))
       await p.setLocalDescription(await p.createOffer())
@@ -223,6 +242,12 @@ export function useDirect() {
     if (!a?.sdp) { setError(t('badCode')); return }
     if (a.type !== 'answer') { setError(t('wrongHalf')); return }
     if (!pc.current) { setError(t('badCode')); return }
+    // Ответ подходит только к последнему созданному приглашению.
+    // Если код создавали заново, старый ответ больше не годится — так и скажем.
+    if (pc.current.signalingState !== 'have-local-offer') {
+      setError(t('staleAnswer'))
+      return
+    }
     try {
       setError(null)
       setPhase('connecting')
@@ -244,9 +269,41 @@ export function useDirect() {
     return o.type === 'offer' ? 'offer' as const : o.type === 'answer' ? 'answer' as const : null
   }, [])
 
+  /** Приглашение для соседа по сети: тот же механизм, но код никто не видит. */
+  const makeOfferBlob = useCallback(async (password: string) => {
+    dc.current?.close(); dc.current = null
+    pc.current?.close(); pc.current = null
+    const p = await makePc(password)
+    bindChannel(p.createDataChannel('snapdock', { ordered: true }))
+    await p.setLocalDescription(await p.createOffer())
+    await gathered(p)
+    return pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'offer' })
+  }, [makePc, bindChannel])
+
+  const makeAnswerBlob = useCallback(async (password: string, offer: string) => {
+    const o = await unpack<{ sdp: string; type: string }>(offer)
+    if (!o?.sdp) return null
+    dc.current?.close(); dc.current = null
+    pc.current?.close(); pc.current = null
+    const p = await makePc(password)
+    p.ondatachannel = (e) => bindChannel(e.channel)
+    await p.setRemoteDescription({ type: 'offer', sdp: o.sdp })
+    await p.setLocalDescription(await p.createAnswer())
+    await gathered(p)
+    return pack({ v: 1, sdp: slimSdp(p.localDescription!.sdp), type: 'answer' })
+  }, [makePc, bindChannel])
+
+  const applyAnswerBlob = useCallback(async (answer: string) => {
+    const a = await unpack<{ sdp: string; type: string }>(answer)
+    if (!a?.sdp || !pc.current || pc.current.signalingState !== 'have-local-offer') return false
+    await pc.current.setRemoteDescription({ type: 'answer', sdp: a.sdp })
+    return true
+  }, [])
+
   const hangUp = useCallback(() => {
     dc.current?.close(); dc.current = null
     local.current?.getTracks().forEach((tr) => tr.stop()); local.current = null
+    setMine(null); setNoCam(false)
     pc.current?.close(); pc.current = null
     key.current = null
     setPhase('idle'); setCode(''); setChat([]); setRemote(null); setError(null)
@@ -278,7 +335,8 @@ export function useDirect() {
   }, [])
 
   return {
-    phase, code, chat, remote, error, localStream: local,
+    phase, code, chat, remote, error, localStream: local, mine, noCam,
     createOffer, acceptOffer, acceptAnswer, inspect, hangUp, send, sendFile, label: bytes,
+    makeOfferBlob, makeAnswerBlob, applyAnswerBlob, setPhase, setError,
   }
 }

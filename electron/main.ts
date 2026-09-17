@@ -7,6 +7,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { startMediaWatcher, mediaCommand, seekTo } from './media'
 import { listSessions, setSessionVolume, setSessionMute, setMasterVolume, getMasterVolume, setAutoDuck, setMasterMute } from './mixer'
+import { lanStart, lanPeers, lanInvite, lanAnswer, lanStop } from './lan'
 
 const DEV = !!process.env.VITE_DEV_SERVER_URL
 const DOCK_W = 380
@@ -233,6 +234,17 @@ ipcMain.handle('shot:permission', () => {
   if (process.platform !== 'darwin') return 'granted'
   return systemPreferences.getMediaAccessStatus('screen')
 })
+ipcMain.on('cam:openSettings', () => {
+  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Camera')
+})
+ipcMain.handle('cam:ask', async () => {
+  if (process.platform !== 'darwin') return 'granted'
+  // Спрашиваем явно: без этого окно разрешения у неподписанной программы часто не всплывает
+  const cam = await systemPreferences.askForMediaAccess('camera').catch(() => false)
+  await systemPreferences.askForMediaAccess('microphone').catch(() => false)
+  return cam ? 'granted' : systemPreferences.getMediaAccessStatus('camera')
+})
+
 ipcMain.on('shot:openSettings', () => {
   shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
 })
@@ -340,6 +352,13 @@ ipcMain.on('chat:open', () => {
   chat.on('closed', () => { chat = null })
 })
 ipcMain.on('chat:close', () => chat?.close())
+
+/* ---------------- Соседи в домашней сети ---------------- */
+ipcMain.handle('lan:start', () =>
+  lanStart((token, offer, from) => chat?.webContents.send('lan:offer', { token, offer, from })))
+ipcMain.handle('lan:peers', () => lanPeers())
+ipcMain.handle('lan:invite', (_e, id: string, offer: string) => lanInvite(id, offer))
+ipcMain.handle('lan:answer', (_e, token: string, answer: string) => lanAnswer(token, answer))
 
 ipcMain.handle('clip:text', (_e, text: string) => { clipboard.writeText(text); return true })
 ipcMain.handle('clip:read', () => clipboard.readText())
@@ -512,6 +531,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  lanStop()
   import('./win-audio').then((m) => m.winStop()).catch(() => {})
 })
 process.on('uncaughtException', (err) => {

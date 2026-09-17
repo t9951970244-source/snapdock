@@ -16,6 +16,8 @@ const api = {
   readText: () => ipcRenderer.invoke('clip:read') as Promise<string>,
   shotPermission: () => ipcRenderer.invoke('shot:permission') as Promise<string>,
   openScreenSettings: () => ipcRenderer.send('shot:openSettings'),
+  openCameraSettings: () => ipcRenderer.send('cam:openSettings'),
+  askCamera: () => ipcRenderer.invoke('cam:ask') as Promise<string>,
   saveShot: (d: string) => ipcRenderer.invoke('shot:save', d) as Promise<string>,
   revealShot: (f: string) => ipcRenderer.send('shot:reveal', f),
   dragShot: (d: string) => ipcRenderer.send('shot:drag', d),
@@ -48,6 +50,15 @@ const api = {
   onEditorImage: (cb: (d: string) => void) => ipcRenderer.on('editor:image', (_e, d) => cb(d)),
   closeEditor: () => ipcRenderer.send('editor:close'),
   openChat: () => ipcRenderer.send('chat:open'),
+  lanStart: () => ipcRenderer.invoke('lan:start') as Promise<{ id: string; name: string }>,
+  lanPeers: () => ipcRenderer.invoke('lan:peers') as Promise<any[]>,
+  lanInvite: (id: string, offer: string) => ipcRenderer.invoke('lan:invite', id, offer) as Promise<string | null>,
+  lanAnswer: (token: string, answer: string) => ipcRenderer.invoke('lan:answer', token, answer),
+  onLanOffer: (cb: (d: { token: string; offer: string; from: string }) => void) => {
+    const h = (_e: unknown, d: any) => cb(d)
+    ipcRenderer.on('lan:offer', h)
+    return () => ipcRenderer.removeListener('lan:offer', h)
+  },
   closeChat: () => ipcRenderer.send('chat:close'),
 
   getLang: () => ipcRenderer.invoke('lang:get') as Promise<'ru' | 'en'>,

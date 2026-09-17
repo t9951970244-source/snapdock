@@ -16,7 +16,8 @@ function Tile({ stream, name, me }: { stream?: MediaStream; name: string; me?: b
     <div className="relative aspect-[4/3] overflow-hidden rounded-[16px]"
          style={{ background: 'rgb(var(--fill))', boxShadow: '0 0 0 1px rgb(var(--glass-edge))' }}>
       {stream
-        ? <video ref={v} autoPlay playsInline muted={me} className="h-full w-full scale-x-[-1] object-cover" />
+        ? <video ref={v} autoPlay playsInline muted={me}
+                 className={`h-full w-full object-cover ${me ? 'scale-x-[-1]' : ''}`} />
         : <div className="grid h-full w-full place-items-center text-[22px] font-semibold"
                style={{ color: 'rgb(var(--ink-3))' }}>{name.slice(0, 2).toUpperCase()}</div>}
       <span className="absolute bottom-2 left-2 rounded-[8px] px-2 py-0.5 text-[11px] font-medium text-white"
@@ -33,11 +34,51 @@ function Chat() {
   const [code, setCode] = useState('')
   const [pw, setPw] = useState('')
   const d = useDirect()
-  const [mode, setMode] = useState<'room' | 'direct'>('room')
+  const [mode, setMode] = useState<'lan' | 'room' | 'direct'>('lan')
   const [inBox, setInBox] = useState('')
   const [copied, setCopied] = useState<'' | 'code' | 'pass' | 'invite'>('')
   const inviteBox = useRef<HTMLTextAreaElement>(null)
   const [fromClip, setFromClip] = useState(false)
+  const [lan, setLan] = useState<any[]>([])
+  const [incoming, setIncoming] = useState<{ token: string; offer: string; from: string } | null>(null)
+  const [calling, setCalling] = useState<string | null>(null)
+
+  /* Соседи в домашней сети: ищем сами, коды не нужны. */
+  useEffect(() => {
+    if (mode !== 'lan') return
+    window.snap?.lanStart()
+    const id = setInterval(async () => setLan((await window.snap?.lanPeers()) ?? []), 1500)
+    return () => clearInterval(id)
+  }, [mode])
+
+  useEffect(() => window.snap?.onLanOffer(setIncoming), [])
+
+  /** Мы зовём соседа: сами делаем приглашение, сами принимаем ответ. */
+  const callPeer = async (id: string) => {
+    if (!pw.trim()) { window.alert(t('lanNeedPass')); return }
+    setCalling(id)
+    try {
+      const offer = await d.makeOfferBlob(pw)
+      const answer = await window.snap?.lanInvite(id, offer)
+      if (!answer) { d.setError(t('directFailed')); d.setPhase('failed'); return }
+      d.setPhase('connecting')
+      await d.applyAnswerBlob(answer)
+    } catch (e: any) {
+      d.setPhase('failed'); d.setError(String(e?.message ?? e))
+    } finally { setCalling(null) }
+  }
+
+  /** Нас позвали: готовим ответ и отдаём его обратно по сети. */
+  const acceptCall = async () => {
+    if (!incoming) return
+    if (!pw.trim()) { window.alert(t('lanNeedPass')); return }
+    const inc = incoming
+    setIncoming(null)
+    d.setPhase('connecting')
+    const answer = await d.makeAnswerBlob(pw, inc.offer)
+    if (!answer) { d.setPhase('failed'); d.setError(t('badCode')); return }
+    await window.snap?.lanAnswer(inc.token, answer)
+  }
 
   /** Одна кнопка на оба случая: приглашение это или ответ, решает сам виджет. */
   const smart = async () => {
@@ -116,14 +157,14 @@ function Chat() {
         {!p.room && d.phase === 'idle' && (
           <span className="no-drag flex gap-0.5 rounded-[10px] p-0.5"
                 style={{ background: 'rgb(var(--fill))', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-            {(['room', 'direct'] as const).map((m) => (
+            {(['lan', 'room', 'direct'] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)}
                       className="rounded-[8px] px-2.5 py-1 text-[11px] font-medium"
                       style={{
                         background: mode === m ? 'rgb(var(--accent) / 0.28)' : 'transparent',
                         color: 'rgb(var(--ink))',
                       }}>
-                {m === 'room' ? t('modeRoom') : t('modeDirect')}
+                {m === 'lan' ? t('modeLan') : m === 'room' ? t('modeRoom') : t('modeDirect')}
               </button>
             ))}
           </span>
@@ -171,7 +212,76 @@ function Chat() {
         </button>
       </div>
 
-      {mode === 'direct' && d.phase !== 'live' ? (
+      {mode === 'lan' && d.phase !== 'live' ? (
+        <div className="flex flex-1 flex-col items-center gap-3 overflow-y-auto px-8 py-6 text-center">
+          <p className="max-w-[460px] text-[12.5px] leading-relaxed" style={{ color: 'rgb(var(--ink-2))' }}>
+            {t('lanIntro')}
+          </p>
+
+          <input value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t('password')}
+                 className="h-10 w-[320px] rounded-[12px] px-3 text-center text-[12.5px] outline-none"
+                 style={{ background: 'rgb(var(--fill))', color: 'rgb(var(--ink))' }} />
+
+          {incoming && (
+            <div className="flex w-[380px] flex-col gap-2 rounded-[14px] p-3"
+                 style={{ background: 'rgb(48 209 88 / 0.16)' }}>
+              <span className="text-[13px] font-semibold" style={{ color: 'rgb(var(--ink))' }}>
+                {incoming.from} {t('lanIncoming')}
+              </span>
+              <div className="flex gap-2">
+                <button onClick={acceptCall}
+                        className="h-9 flex-[2] rounded-[11px] text-[12.5px] font-semibold"
+                        style={{ background: 'rgb(48 209 88 / 0.35)' }}>
+                  {t('lanAccept')}
+                </button>
+                <button onClick={() => setIncoming(null)}
+                        className="h-9 flex-1 rounded-[11px] text-[12.5px]"
+                        style={{ background: 'rgb(var(--fill))' }}>
+                  {t('lanDecline')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex w-[380px] flex-col gap-2">
+            {lan.length === 0 ? (
+              <div className="flex items-center justify-center gap-2.5 py-6 text-[12px]"
+                   style={{ color: 'rgb(var(--ink-2))' }}>
+                <span className="h-3 w-3 rounded-full border-2 border-current border-r-transparent"
+                      style={{ animation: 'spin 0.9s linear infinite' }} />
+                {t('lanSearching')}
+              </div>
+            ) : lan.map((p2: any) => (
+              <div key={p2.id} className="flex items-center gap-3 rounded-[13px] px-3 py-2.5"
+                   style={{ background: 'rgb(var(--fill))' }}>
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[12px] font-semibold"
+                      style={{ background: 'rgb(var(--accent) / 0.25)', color: 'rgb(var(--ink))' }}>
+                  {String(p2.name).slice(0, 2).toUpperCase()}
+                </span>
+                <span className="flex-1 truncate text-left text-[12.5px] font-medium"
+                      style={{ color: 'rgb(var(--ink))' }}>{p2.name}</span>
+                <button onClick={() => callPeer(p2.id)} disabled={calling === p2.id}
+                        className="h-8 shrink-0 rounded-[10px] px-4 text-[12px] font-semibold disabled:opacity-40"
+                        style={{ background: 'rgb(var(--accent) / 0.28)', color: 'rgb(var(--ink))' }}>
+                  {calling === p2.id ? '…' : t('lanCall')}
+                </button>
+              </div>
+            ))}
+            {lan.length === 0 && (
+              <p className="text-[11.5px]" style={{ color: 'rgb(var(--ink-3))' }}>{t('lanNobody')}</p>
+            )}
+          </div>
+
+          {d.phase === 'connecting' && (
+            <div className="flex items-center gap-2.5 text-[12.5px]" style={{ color: 'rgb(var(--ink))' }}>
+              <span className="h-3 w-3 rounded-full border-2 border-current border-r-transparent"
+                    style={{ animation: 'spin 0.9s linear infinite' }} />
+              {t('connecting')}
+            </div>
+          )}
+          {d.error && <p className="selectable max-w-[440px] text-[12px]" style={{ color: '#ff453a' }}>{d.error}</p>}
+        </div>
+      ) : mode === 'direct' && d.phase !== 'live' ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-8 py-4 text-center">
           <p className="max-w-[460px] text-[12.5px] leading-relaxed" style={{ color: 'rgb(var(--ink-2))' }}>
             {t('directIntro')}
@@ -257,13 +367,20 @@ function Chat() {
             <p className="selectable max-w-[440px] text-[12px]" style={{ color: '#ff453a' }}>{d.error}</p>
           )}
         </div>
-      ) : mode === 'direct' ? (
+      ) : (mode === 'direct' || mode === 'lan') ? (
         <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4"
              onDragOver={(e) => e.preventDefault()}
              onDrop={(e) => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(d.sendFile) }}>
           <div className="min-w-0 flex-[3] overflow-y-auto">
+            {d.noCam && (
+              <button onClick={() => window.snap?.openCameraSettings()}
+                      className="mb-2 w-full rounded-[12px] px-3 py-2 text-left text-[11.5px]"
+                      style={{ background: 'rgb(255 159 10 / 0.18)', color: 'rgb(var(--ink))' }}>
+                {t('noCamera')}
+              </button>
+            )}
             <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
-              <Tile stream={d.localStream.current ?? undefined} name={t('you')} me />
+              <Tile stream={d.mine ?? undefined} name={t('you')} me />
               <Tile stream={d.remote ?? undefined} name="—" />
             </div>
           </div>
