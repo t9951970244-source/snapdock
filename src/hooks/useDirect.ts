@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { deriveKey, seal, unseal, sealBin, unsealBin, packSealed, unpackSealed, toB64, fromB64 } from '@/lib/crypto'
 import { bytes } from '@/lib/format'
 import { t } from '@/lib/i18n'
-import type { ChatItem } from './usePeer'
+import type { ChatItem } from './useRoom'
 
 /**
  * Прямое соединение двух компьютеров без единого сервера.
@@ -17,10 +17,13 @@ import type { ChatItem } from './usePeer'
  */
 
 const CHUNK = 16 * 1024          // для сырого канала берём вдвое меньше: буфер жёстче
-const STUN = [
+let ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ]
+// Адреса берём из настроек: туда можно вписать свой ретранслятор
+window.snap?.cfgGet().then((c: any) => { if (c?.ice?.length) ICE = c.ice }).catch(() => {})
+export function setIceServers(list: RTCIceServer[]) { if (list?.length) ICE = list }
 
 export type Phase = 'idle' | 'madeOffer' | 'madeAnswer' | 'connecting' | 'live' | 'failed'
 
@@ -47,7 +50,7 @@ function slimSdp(sdp: string): string {
   return sdp.split(/\r?\n/).filter((l) => {
     if (l.startsWith('a=candidate:')) {
       if (/ tcptype /.test(l)) return false          // резервные пути по tcp почти не используются
-      if (/ typ relay /.test(l)) return false        // ретрансляторов у нас нет
+      // пути через ретранслятор оставляем: именно они спасают связь
     }
     return l.length > 0
   }).join('\r\n') + '\r\n'
@@ -78,6 +81,7 @@ export function useDirect() {
   const local = useRef<MediaStream | null>(null)
   const key = useRef<CryptoKey | null>(null)
   const incoming = useRef(new Map<string, { name: string; size: number; parts: ArrayBuffer[]; got: number }>())
+  const ping = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const push = (i: ChatItem) => setChat((c) => [...c.slice(-80), i])
 
@@ -92,6 +96,7 @@ export function useDirect() {
   const handle = useCallback(async (raw: any) => {
     const k = key.current
     if (!k) return
+    if (raw?.t === 'ping') return
     if (raw?.t === 'enc') {
       const obj = await unseal<any>(k, unpackSealed(raw))
       if (!obj) return
@@ -120,17 +125,34 @@ export function useDirect() {
   const bindChannel = useCallback((channel: RTCDataChannel) => {
     dc.current = channel
     channel.binaryType = 'arraybuffer'
-    channel.onopen = () => { setPhase('live'); setError(null) }
-    channel.onclose = () => setPhase('failed')
+    channel.onopen = () => {
+      setPhase('live'); setError(null)
+      // Пульс раз в четыре секунды: держит путь живым и ловит настоящий обрыв
+      if (ping.current) clearInterval(ping.current)
+      ping.current = setInterval(() => {
+        if (channel.readyState === 'open') { try { channel.send('{"t":"ping"}') } catch { /* закрылся */ } }
+      }, 4000)
+    }
+    channel.onclose = () => {
+      if (ping.current) { clearInterval(ping.current); ping.current = null }
+      setPhase((cur) => (cur === 'live' ? 'failed' : cur))
+    }
+    // Строгая очередь: следующее сообщение разбирается только после предыдущего
+    let chain: Promise<void> = Promise.resolve()
     channel.onmessage = (e) => {
-      try { handle(JSON.parse(e.data)) } catch { /* мусор игнорируем */ }
+      chain = chain.then(async () => {
+        try { await handle(JSON.parse(e.data)) } catch { /* мусор игнорируем */ }
+      })
     }
   }, [handle])
 
   const makePc = useCallback(async (password: string) => {
     await window.snap?.askCamera()      // на macOS окно разрешения иначе не всплывает
     key.current = await deriveKey(password, 'direct')
-    const p = new RTCPeerConnection({ iceServers: STUN })
+    const p = new RTCPeerConnection({
+      iceServers: ICE,
+      iceCandidatePoolSize: 4,        // пути ищутся заранее, связь встаёт быстрее
+    })
     pc.current = p
     /**
      * «disconnected» — обычно временная потеря пакетов, связь сама возвращается
@@ -147,8 +169,13 @@ export function useDirect() {
       }
       if (st === 'disconnected') {
         if (!limp) limp = setTimeout(() => {
-          if (p.connectionState !== 'connected') { setPhase('failed'); setError(t('directFailed')) }
-        }, 12000)
+          if (p.connectionState === 'connected') return
+          // Последняя попытка: просим движок заново поискать путь
+          try { p.restartIce?.() } catch { /* не поддержано */ }
+          setTimeout(() => {
+            if (p.connectionState !== 'connected') { setPhase('failed'); setError(t('lostPath')) }
+          }, 6000)
+        }, 10000)
         return
       }
       if (st === 'failed') {
@@ -302,6 +329,7 @@ export function useDirect() {
 
   const hangUp = useCallback(() => {
     dc.current?.close(); dc.current = null
+    if (ping.current) { clearInterval(ping.current); ping.current = null }
     local.current?.getTracks().forEach((tr) => tr.stop()); local.current = null
     setMine(null); setNoCam(false)
     pc.current?.close(); pc.current = null

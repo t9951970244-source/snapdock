@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a84ff">
+<title>SnapDock — комната</title>
+<style>
+:root{
+  --bg:#f2f2f5; --card:#fff; --ink:#1d1d1f; --ink-2:#6e6e73;
+  --fill:rgba(120,120,128,.14); --accent:#0a84ff; --ok:#30d158; --bad:#ff453a;
+  --ios:cubic-bezier(.32,.72,0,1);
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#000; --card:#1c1c1e; --ink:#f5f5f7; --ink-2:#a1a1a6; --fill:rgba(120,120,128,.3) }
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font:400 15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
+  background:var(--bg);color:var(--ink);display:flex;flex-direction:column;overflow:hidden;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button,input{font:inherit;color:inherit}
+button{border:0;background:none;cursor:pointer}
+
+/* ── вход ── */
+#gate{flex:1;display:grid;place-items:center;padding:24px}
+#gate .box{width:min(380px,100%);display:flex;flex-direction:column;gap:12px;text-align:center}
+#gate h1{font-size:30px;font-weight:650;letter-spacing:-.02em}
+#gate p{font-size:14px;color:var(--ink-2);line-height:1.5}
+.field{height:50px;border-radius:14px;background:var(--fill);padding:0 16px;border:0;outline:0;width:100%;text-align:center;font-size:16px}
+.go{height:50px;border-radius:14px;background:var(--accent);color:#fff;font-size:16px;font-weight:600;
+  transition:transform .2s var(--ios),opacity .2s}
+.go:active{transform:scale(.97)}
+.go:disabled{opacity:.4}
+
+/* ── комната ── */
+#room{flex:1;display:none;flex-direction:column;min-height:0}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);
+  border-bottom:1px solid var(--fill);flex:0 0 auto}
+header b{font-size:15px;font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);flex:0 0 auto}
+.dot.on{background:var(--ok)}
+.who{font-size:12.5px;color:var(--ink-2);margin-left:auto}
+.icon{width:36px;height:36px;border-radius:10px;background:var(--fill);display:grid;place-items:center;font-size:17px}
+
+#grid{display:grid;gap:8px;padding:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  flex:0 0 auto;max-height:46vh;overflow:auto}
+.tile{position:relative;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:var(--fill)}
+.tile video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+.tile.me video{transform:scaleX(-1)}
+.tile span{position:absolute;left:8px;bottom:8px;font-size:11px;color:#fff;background:rgba(0,0,0,.5);
+  padding:2px 7px;border-radius:7px;backdrop-filter:blur(8px)}
+.tile.empty{display:grid;place-items:center;color:var(--ink-2);font-size:20px;font-weight:600}
+
+#feed{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px;min-height:0}
+.msg{max-width:78%;padding:9px 13px;border-radius:17px;background:var(--card);font-size:14.5px;
+  word-break:break-word;align-self:flex-start;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.msg.me{align-self:flex-end;background:var(--accent);color:#fff}
+.msg .nm{display:block;font-size:11px;color:var(--ink-2);margin-bottom:2px}
+.msg.me .nm{color:rgba(255,255,255,.75)}
+.msg a{color:inherit}
+.bar{height:4px;border-radius:2px;background:var(--fill);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .15s linear}
+.sys{align-self:center;font-size:12px;color:var(--ink-2);background:none;box-shadow:none;padding:2px}
+
+footer{display:flex;gap:8px;padding:10px;background:var(--card);border-top:1px solid var(--fill);flex:0 0 auto}
+#text{flex:1;height:44px;border-radius:22px;background:var(--fill);padding:0 16px;border:0;outline:0;font-size:15px}
+.rnd{width:44px;height:44px;border-radius:22px;background:var(--fill);display:grid;place-items:center;font-size:19px;flex:0 0 auto}
+.rnd.send{background:var(--accent);color:#fff}
+#drop{position:fixed;inset:0;display:none;place-items:center;background:rgba(10,132,255,.18);
+  font-size:18px;font-weight:600;z-index:20;backdrop-filter:blur(3px)}
+#drop.on{display:grid}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="box">
+    <h1>SnapDock</h1>
+    <p>Введите название комнаты и своё имя. Кто введёт то же название — окажется рядом. Работает на компьютере и телефоне.</p>
+    <input class="field" id="gRoom" placeholder="Название комнаты" autocomplete="off">
+    <input class="field" id="gName" placeholder="Ваше имя" autocomplete="off">
+    <button class="go" id="gGo">Войти</button>
+    <p id="gErr" style="color:var(--bad)"></p>
+  </div>
+</div>
+
+<div id="room">
+  <header>
+    <span class="dot" id="dot"></span>
+    <b id="hRoom">—</b>
+    <span class="who" id="hWho">—</span>
+    <button class="icon" id="bCam" title="Камера">📹</button>
+    <button class="icon" id="bMic" title="Микрофон">🎙</button>
+    <button class="icon" id="bOut" title="Выйти">✕</button>
+  </header>
+
+  <div id="grid"></div>
+  <div id="feed"></div>
+
+  <footer>
+    <button class="rnd" id="bFile" title="Отправить файл">📎</button>
+    <input id="text" placeholder="Сообщение" autocomplete="off">
+    <button class="rnd send" id="bSend">➤</button>
+    <input type="file" id="file" multiple hidden>
+  </footer>
+</div>
+
+<div id="drop">Отпустите — отправим всем</div>
+
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const CHUNK = 64 * 1024;
+
+let ws = null, me = '', myName = '', room = '';
+let local = null, camOn = true, micOn = true;
+const pcs = new Map();      // id -> RTCPeerConnection
+const tiles = new Map();    // id -> элемент плитки
+const incoming = new Map(); // id файла -> сборка
+let ICE = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+
+/* Ретранслятор, если он задан на сервере: /ice отдаёт список */
+fetch('/ice').then(r => r.json()).then(j => { if (Array.isArray(j) && j.length) ICE = j; }).catch(() => {});
+
+/* ───────── вход ───────── */
+const saved = JSON.parse(localStorage.getItem('snapdock') || '{}');
+$('#gName').value = saved.name || '';
+$('#gRoom').value = decodeURIComponent(location.pathname.slice(1)) || saved.room || '';
+$('#gGo').onclick = enter;
+$('#gRoom').onkeydown = $('#gName').onkeydown = (e) => { if (e.key === 'Enter') enter(); };
+
+function enter() {
+  room = $('#gRoom').value.trim();
+  myName = $('#gName').value.trim() || 'Гость';
+  if (!room) { $('#gErr').textContent = 'Введите название комнаты'; return; }
+  localStorage.setItem('snapdock', JSON.stringify({ room, name: myName }));
+  history.replaceState(null, '', '/' + encodeURIComponent(room));
+  $('#gate').style.display = 'none';
+  $('#room').style.display = 'flex';
+  $('#hRoom').textContent = room;
+  startMedia().finally(connect);
+}
+
+/* ───────── камера ───────── */
+async function startMedia() {
+  try {
+    local = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' },
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
+  } catch { local = null; note('Камера недоступна — вас не видно, но остальных видно'); }
+  showTile('me', myName, local, true);
+}
+
+function showTile(id, name, stream, mine) {
+  let el = tiles.get(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'tile' + (mine ? ' me' : '');
+    tiles.set(id, el);
+    $('#grid').append(el);
+  }
+  el.innerHTML = '';
+  if (stream) {
+    const v = document.createElement('video');
+    v.autoplay = true; v.playsInline = true; v.muted = !!mine;
+    v.srcObject = stream;
+    el.append(v);
+  } else {
+    el.classList.add('empty');
+    el.append(document.createTextNode((name || '?').slice(0, 2).toUpperCase()));
+  }
+  const s = document.createElement('span');
+  s.textContent = mine ? 'Вы' : name;
+  el.append(s);
+}
+
+/* ───────── связь с сервером ───────── */
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    $('#dot').classList.add('on');
+    ws.send(JSON.stringify({ t: 'join', room, name: myName }));
+  };
+
+  ws.onclose = () => {
+    $('#dot').classList.remove('on');
+    // Сервер всегда на месте — просто подключаемся заново, никаких кодов
+    setTimeout(connect, 1500);
+  };
+
+  ws.onmessage = async (e) => {
+    if (typeof e.data !== 'string') return onBinary(e.data);
+    const m = JSON.parse(e.data);
+
+    if (m.t === 'joined') { me = m.id; return; }
+    if (m.t === 'full') { note('В комнате уже максимум участников'); return; }
+
+    if (m.t === 'roster') {
+      $('#hWho').textContent = m.list.length + ' в комнате';
+      const ids = new Set(m.list.map((p) => p.id));
+      for (const [id, el] of tiles) if (id !== 'me' && !ids.has(id)) { el.remove(); tiles.delete(id); }
+      for (const p of m.list) {
+        if (p.id === me) continue;
+        if (!tiles.has(p.id)) showTile(p.id, p.name, null, false);
+        // Звонит тот, чей идентификатор больше — так оба не звонят одновременно
+        if (!pcs.has(p.id) && me > p.id) call(p.id, p.name);
+      }
+      return;
+    }
+
+    if (m.t === 'left') {
+      pcs.get(m.from || m.id)?.close(); pcs.delete(m.from || m.id);
+      tiles.get(m.id)?.remove(); tiles.delete(m.id);
+      return;
+    }
+
+    if (m.t === 'chat') return bubble(m.fromName, m.text, false);
+
+    if (m.t === 'fmeta') {
+      incoming.set(m.id, { name: m.name, size: m.size, parts: [], got: 0, el: fileBubble(m.fromName, m.name, m.size, false) });
+      return;
+    }
+
+    if (m.t === 'signal') return onSignal(m);
+  };
+}
+
+function note(text) { bubble(null, text, false, true); }
+
+function bubble(name, text, mine, sys) {
+  const d = document.createElement('div');
+  d.className = 'msg' + (mine ? ' me' : '') + (sys ? ' sys' : '');
+  if (name && !mine && !sys) { const n = document.createElement('span'); n.className = 'nm'; n.textContent = name; d.append(n); }
+  d.append(document.createTextNode(text));
+  $('#feed').append(d);
+  $('#feed').scrollTop = 1e9;
+  return d;
+}
+
+function fileBubble(name, fname, size, mine) {
+  const d = bubble(name, `${fname} · ${(size / 1048576).toFixed(1)} МБ`, mine);
+  const bar = document.createElement('div'); bar.className = 'bar';
+  const i = document.createElement('i'); bar.append(i); d.append(bar);
+  d._fill = i;
+  return d;
+}
+
+/* ───────── файлы ───────── */
+/* Пакет: 8 байт метки файла + номер куска + данные. Сервер раздаёт как есть. */
+function packet(idBytes, seq, data) {
+  const out = new Uint8Array(12 + data.byteLength);
+  out.set(idBytes, 0);
+  new DataView(out.buffer).setUint32(8, seq);
+  out.set(new Uint8Array(data), 12);
+  return out.buffer;
+}
+
+async function sendFile(f) {
+  const idBytes = crypto.getRandomValues(new Uint8Array(8));
+  const id = [...idBytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  ws.send(JSON.stringify({ t: 'fmeta', id, name: f.name, size: f.size }));
+  const el = fileBubble(null, f.name, f.size, true);
+
+  const buf = await f.arrayBuffer();
+  for (let off = 0, n = 0; off < buf.byteLength; off += CHUNK, n++) {
+    while (ws.bufferedAmount > 4 << 20) await new Promise((r) => setTimeout(r, 40));
+    ws.send(packet(idBytes, n, buf.slice(off, off + CHUNK)));
+    el._fill.style.width = Math.min(100, ((off + CHUNK) / buf.byteLength) * 100) + '%';
+  }
+}
+
+function onBinary(buf) {
+  const u = new Uint8Array(buf);
+  const id = [...u.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const f = incoming.get(id);
+  if (!f) return;
+  f.parts.push(buf.slice(12));
+  f.got += buf.byteLength - 12;
+  f.el._fill.style.width = Math.min(100, (f.got / f.size) * 100) + '%';
+  if (f.got >= f.size) {
+    const url = URL.createObjectURL(new Blob(f.parts));
+    const a = document.createElement('a');
+    a.href = url; a.download = f.name; a.textContent = ' Сохранить';
+    f.el.append(a);
+    incoming.delete(id);
+  }
+}
+
+/* ───────── видео ───────── */
+function peer(id, name) {
+  let pc = pcs.get(id);
+  if (pc) return pc;
+  pc = new RTCPeerConnection({ iceServers: ICE, iceCandidatePoolSize: 4 });
+  pcs.set(id, pc);
+  if (local) local.getTracks().forEach((tr) => pc.addTrack(tr, local));
+  else { try { pc.addTransceiver('video', { direction: 'recvonly' }); pc.addTransceiver('audio', { direction: 'recvonly' }); } catch {} }
+  pc.onicecandidate = (e) => { if (e.candidate) ws.send(JSON.stringify({ t: 'signal', to: id, ice: e.candidate })); };
+  pc.ontrack = (e) => showTile(id, name, e.streams[0], false);
+  pc.onconnectionstatechange = () => {
+    // Путь потерян — просим движок найти новый, сервер на месте и поможет
+    if (pc.connectionState === 'failed') { try { pc.restartIce(); } catch {} }
+  };
+  return pc;
+}
+
+async function call(id, name) {
+  const pc = peer(id, name);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({ t: 'signal', to: id, sdp: pc.localDescription }));
+}
+
+async function onSignal(m) {
+  const pc = peer(m.from, m.fromName || '');
+  if (m.sdp) {
+    await pc.setRemoteDescription(m.sdp);
+    if (m.sdp.type === 'offer') {
+      await pc.setLocalDescription(await pc.createAnswer());
+      ws.send(JSON.stringify({ t: 'signal', to: m.from, sdp: pc.localDescription }));
+    }
+  } else if (m.ice) {
+    try { await pc.addIceCandidate(m.ice); } catch {}
+  }
+}
+
+/* ───────── кнопки ───────── */
+$('#bSend').onclick = () => {
+  const v = $('#text').value.trim();
+  if (!v) return;
+  ws.send(JSON.stringify({ t: 'chat', text: v }));
+  bubble(null, v, true);
+  $('#text').value = '';
+};
+$('#text').onkeydown = (e) => { if (e.key === 'Enter') $('#bSend').click(); };
+$('#bFile').onclick = () => $('#file').click();
+$('#file').onchange = (e) => { [...e.target.files].forEach(sendFile); e.target.value = ''; };
+$('#bCam').onclick = () => {
+  camOn = !camOn;
+  local?.getVideoTracks().forEach((t) => (t.enabled = camOn));
+  $('#bCam').style.opacity = camOn ? 1 : .4;
+};
+$('#bMic').onclick = () => {
+  micOn = !micOn;
+  local?.getAudioTracks().forEach((t) => (t.enabled = micOn));
+  $('#bMic').style.opacity = micOn ? 1 : .4;
+};
+$('#bOut').onclick = () => location.href = '/';
+
+/* перетаскивание файлов */
+addEventListener('dragover', (e) => { e.preventDefault(); $('#drop').classList.add('on'); });
+addEventListener('dragleave', () => $('#drop').classList.remove('on'));
+addEventListener('drop', (e) => {
+  e.preventDefault(); $('#drop').classList.remove('on');
+  [...e.dataTransfer.files].forEach(sendFile);
+});
+</script>
+</body>
+</html>

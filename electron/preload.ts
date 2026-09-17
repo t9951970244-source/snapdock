@@ -20,6 +20,7 @@ const api = {
   askCamera: () => ipcRenderer.invoke('cam:ask') as Promise<string>,
   saveShot: (d: string) => ipcRenderer.invoke('shot:save', d) as Promise<string>,
   revealShot: (f: string) => ipcRenderer.send('shot:reveal', f),
+  saveRecording: (data: ArrayBuffer, ext: string) => ipcRenderer.invoke('rec:save', data, ext) as Promise<string>,
   dragShot: (d: string) => ipcRenderer.send('shot:drag', d),
 
   /* звук */
@@ -50,11 +51,16 @@ const api = {
   onEditorImage: (cb: (d: string) => void) => ipcRenderer.on('editor:image', (_e, d) => cb(d)),
   closeEditor: () => ipcRenderer.send('editor:close'),
   openChat: () => ipcRenderer.send('chat:open'),
+  cfgGet: () => ipcRenderer.invoke('cfg:get') as Promise<any>,
+  cfgSetIce: (text: string) => ipcRenderer.invoke('cfg:setIce', text) as Promise<any>,
+  cfgSetPeer: (host: string) => ipcRenderer.invoke('cfg:setPeer', host) as Promise<any>,
+  cfgSetRoomUrl: (url: string) => ipcRenderer.invoke('cfg:setRoomUrl', url) as Promise<any>,
+  cfgSetProfile: (nick: string, room: string, pass: string) => ipcRenderer.invoke('cfg:setProfile', nick, room, pass) as Promise<any>,
   lanStart: () => ipcRenderer.invoke('lan:start') as Promise<{ id: string; name: string }>,
   lanPeers: () => ipcRenderer.invoke('lan:peers') as Promise<any[]>,
   lanInvite: (id: string, offer: string) => ipcRenderer.invoke('lan:invite', id, offer) as Promise<string | null>,
   lanAnswer: (token: string, answer: string) => ipcRenderer.invoke('lan:answer', token, answer),
-  onLanOffer: (cb: (d: { token: string; offer: string; from: string }) => void) => {
+  onLanOffer: (cb: (d: { token: string; offer: string; from: string; fromId: string }) => void) => {
     const h = (_e: unknown, d: any) => cb(d)
     ipcRenderer.on('lan:offer', h)
     return () => ipcRenderer.removeListener('lan:offer', h)

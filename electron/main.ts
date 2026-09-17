@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import { startMediaWatcher, mediaCommand, seekTo } from './media'
 import { listSessions, setSessionVolume, setSessionMute, setMasterVolume, getMasterVolume, setAutoDuck, setMasterMute } from './mixer'
 import { lanStart, lanPeers, lanInvite, lanAnswer, lanStop } from './lan'
+import { getSettings, saveSettings, parseIce, iceToText } from './settings'
 
 const DEV = !!process.env.VITE_DEV_SERVER_URL
 const DOCK_W = 380
@@ -335,6 +336,7 @@ ipcMain.on('editor:close', () => editor?.close())
 let chat: BrowserWindow | null = null
 ipcMain.on('chat:open', () => {
   if (chat && !chat.isDestroyed()) { chat.show(); chat.focus(); return }
+
   const darkNow = nativeTheme.shouldUseDarkColors
   chat = new BrowserWindow({
     width: 760, height: 560, minWidth: 420, minHeight: 380,
@@ -355,8 +357,37 @@ ipcMain.on('chat:close', () => chat?.close())
 
 /* ---------------- Соседи в домашней сети ---------------- */
 ipcMain.handle('lan:start', () =>
-  lanStart((token, offer, from) => chat?.webContents.send('lan:offer', { token, offer, from })))
+  lanStart((token, offer, from, fromId) =>
+    chat?.webContents.send('lan:offer', { token, offer, from, fromId })))
 ipcMain.handle('lan:peers', () => lanPeers())
+
+/* ---------------- Настройки связи ---------------- */
+ipcMain.handle('cfg:get', () => ({
+  ...getSettings(),
+  iceText: iceToText(getSettings().ice),
+  deviceName: require('node:os').hostname().replace(/\.local$/i, ''),
+}))
+ipcMain.handle('cfg:setIce', (_e, text: string) => {
+  const ice = parseIce(text)
+  const s = saveSettings(ice.length ? { ice } : {})
+  return { ...s, iceText: iceToText(s.ice) }
+})
+ipcMain.handle('cfg:setProfile', (_e, nick: string, lastRoom: string, lastPass: string) =>
+  saveSettings({ nick: nick.trim() || undefined, lastRoom: lastRoom.trim() || undefined, lastPass: lastPass?.trim() || undefined }))
+ipcMain.handle('cfg:setRoomUrl', (_e, url: string) => saveSettings({ roomUrl: url.trim() || undefined }))
+ipcMain.handle('cfg:setPeer', (_e, host: string) => {
+  const t = host.trim()
+  if (!t) return saveSettings({ peerHost: undefined, peerPort: undefined, peerPath: undefined })
+  try {
+    const u = new URL(t.includes('://') ? t : `https://${t}`)
+    return saveSettings({
+      peerHost: u.hostname,
+      peerPort: Number(u.port) || (u.protocol === 'https:' ? 443 : 80),
+      peerPath: u.pathname && u.pathname !== '/' ? u.pathname : '/',
+      peerSecure: u.protocol === 'https:',
+    })
+  } catch { return getSettings() }
+})
 ipcMain.handle('lan:invite', (_e, id: string, offer: string) => lanInvite(id, offer))
 ipcMain.handle('lan:answer', (_e, token: string, answer: string) => lanAnswer(token, answer))
 
@@ -379,6 +410,16 @@ ipcMain.handle('shot:save', async (_e, dataUrl: string) => {
 
 ipcMain.on('shot:reveal', (_e, file: string) => shell.showItemInFolder(file))
 
+ipcMain.handle('rec:save', async (_e, data: ArrayBuffer, ext: string) => {
+  const dir = join(app.getPath('videos'), 'SnapDock')
+  await mkdir(dir, { recursive: true })
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const file = join(dir, `SnapDock ${ts}.${ext}`)
+  await writeFile(file, Buffer.from(data))
+  shell.showItemInFolder(file)
+  return file
+})
+
 /** Перетаскивание снимка прямо из виджета в Telegram/Figma/письмо. */
 ipcMain.on('shot:drag', async (e, dataUrl: string) => {
   const dir = join(app.getPath('temp'), 'snapdock')
@@ -398,6 +439,16 @@ ipcMain.on('shot:drag', async (e, dataUrl: string) => {
  * играет (Spotify, YouTube, VLC, Zoom), а не синтетическую анимацию.
  * Windows: работает. macOS: нужен Electron >= 31 (ScreenCaptureKit). Linux: нет.
  */
+function installPermissions() {
+  const ses = session.defaultSession
+  const allow = new Set(['media', 'audioCapture', 'videoCapture', 'display-capture',
+                         'clipboard-read', 'clipboard-sanitized-write', 'fullscreen'])
+  ses.setPermissionRequestHandler((_wc, perm, cb) => cb(allow.has(perm)))
+  ses.setPermissionCheckHandler((_wc, perm) => allow.has(perm))
+  // Страница грузится с диска, а не с сайта: разрешаем ей камеру как доверенной
+  ses.setDevicePermissionHandler(() => true)
+}
+
 function installLoopbackHandler() {
   session.defaultSession.setDisplayMediaRequestHandler(
     async (_request, callback) => {
@@ -433,6 +484,7 @@ function registerHotkeys() {
     'CommandOrControl+Shift+2': () => win?.webContents.send('hotkey', 'fullscreen'),
     'CommandOrControl+Shift+Space': () => win?.webContents.send('hotkey', 'playpause'),
     'CommandOrControl+Shift+M': () => win?.webContents.send('hotkey', 'mixer'),
+    'CommandOrControl+Shift+R': () => win?.webContents.send('hotkey', 'record'),
     'CommandOrControl+Shift+D': () => toggleDock(),
     'CommandOrControl+Shift+Q': () => app.quit(),
   }
@@ -518,6 +570,7 @@ app.whenReady().then(() => {
       ],
     },
   ]))
+  installPermissions()
   installLoopbackHandler()
   createDock()
   createTray()

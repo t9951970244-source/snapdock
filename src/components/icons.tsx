@@ -61,6 +61,13 @@ export const IMuted = (p: React.SVGProps<SVGSVGElement>) => (
 export const IClose = (p: React.SVGProps<SVGSVGElement>) => (
   <svg {...box(p)}><g {...S}><path d="M5.5 5.5 14.5 14.5M14.5 5.5 5.5 14.5" /></g></svg>
 )
+export const IRec = (p: React.SVGProps<SVGSVGElement>) => (
+  <svg {...box(p)}><circle cx="10" cy="10" r="5.4" fill="currentColor" /></svg>
+)
+export const IStop = (p: React.SVGProps<SVGSVGElement>) => (
+  <svg {...box(p)}><rect x="5.6" y="5.6" width="8.8" height="8.8" rx="1.8" fill="currentColor" /></svg>
+)
+
 export const IGrip = (p: React.SVGProps<SVGSVGElement>) => (
   <svg width="4" height="36" viewBox="0 0 4 36" {...p}><rect width="4" height="36" rx="2" fill="currentColor" /></svg>
 )

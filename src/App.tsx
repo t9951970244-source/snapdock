@@ -7,6 +7,7 @@ import { ShotTray, type Shot } from './components/ShotTray'
 import { useAnalyser } from './hooks/useAnalyser'
 import { useNowPlaying } from './hooks/useNowPlaying'
 import { useMixer } from './hooks/useMixer'
+import { useRecorder } from './hooks/useRecorder'
 import { prefersDark } from './lib/color'
 import { initLang, setLang, t, useLang } from './lib/i18n'
 
@@ -29,6 +30,7 @@ export default function App() {
   }, [])
   const { media, toggle, next, prev, seek } = useNowPlaying()
   const mix = useMixer(panel === 'mixer')
+  const recorder = useRecorder()
 
   /* тема следует за системой */
   useEffect(() => {
@@ -97,11 +99,16 @@ export default function App() {
   }, [current])
 
   /* горячие клавиши приходят из главного процесса */
+  /* Запись сохранилась или сорвалась — говорим об этом */
+  useEffect(() => { if (recorder.saved) note(t('recSaved')) }, [recorder.saved])
+  useEffect(() => { if (recorder.error) note(t('recFailed')) }, [recorder.error])
+
   useEffect(() => window.snap?.onHotkey((k) => {
     if (k === 'region') region()
     if (k === 'fullscreen') fullscreen()
     if (k === 'playpause') toggle()
     if (k === 'mixer') setPanel((p) => (p === 'mixer' ? null : 'mixer'))
+    if (k === 'record') recorder.on ? recorder.stop() : recorder.start('system')
   }), [region, fullscreen, toggle])
 
   return (
@@ -131,6 +138,8 @@ export default function App() {
           onRegion={region} onScreen={fullscreen} onCopy={copy} onSave={save}
           onChat={() => window.snap?.openChat()}
           onQuit={() => window.snap?.quit()}
+          recOn={recorder.on} recClock={recorder.clock}
+          onRec={recorder.start} onRecStop={recorder.stop}
           busy={busy} hasShot={!!current}
         />
       </div>

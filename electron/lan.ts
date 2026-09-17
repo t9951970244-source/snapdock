@@ -32,7 +32,7 @@ const peers = new Map<string, LanPeer>()
 
 /* Входящие приглашения ждут ответа от окна — держим их по метке. */
 const waiting = new Map<string, net.Socket>()
-let onOffer: ((token: string, offer: string, from: string) => void) | null = null
+let onOffer: ((token: string, offer: string, from: string, fromId: string) => void) | null = null
 
 function broadcastAddresses(): string[] {
   const out = new Set<string>(['255.255.255.255'])
@@ -63,7 +63,7 @@ function startServer(): Promise<number> {
           if (msg?.t !== 'offer' || !msg.offer) { sock.end(); return }
           const token = randomBytes(6).toString('hex')
           waiting.set(token, sock)
-          onOffer?.(token, msg.offer, String(msg.name ?? '—'))
+          onOffer?.(token, msg.offer, String(msg.name ?? '—'), String(msg.id ?? ''))
           setTimeout(() => {                     // окно не ответило — не держим соединение
             if (waiting.delete(token)) sock.end()
           }, 45000)
@@ -75,7 +75,7 @@ function startServer(): Promise<number> {
   })
 }
 
-export async function lanStart(handler: (token: string, offer: string, from: string) => void) {
+export async function lanStart(handler: (token: string, offer: string, from: string, fromId: string) => void) {
   if (udp) return { id: myId, name: myName }
   onOffer = handler
   tcpPort = await startServer()
@@ -114,7 +114,7 @@ export function lanInvite(peerId: string, offer: string): Promise<string | null>
   if (!p) return Promise.resolve(null)
   return new Promise((resolve) => {
     const sock = net.createConnection({ host: p.host, port: p.port }, () => {
-      sock.write(JSON.stringify({ t: 'offer', offer, name: myName }) + '\n')
+      sock.write(JSON.stringify({ t: 'offer', offer, name: myName, id: myId }) + '\n')
     })
     let buf = ''
     let done = false
